@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Estimator" />
+  <title>Spark Repair Estimator</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
+  <link rel="icon" type="image/png" href="logo.png" />
+  <meta name="theme-color" content="#111827" />
+  <script>if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .scroll-x::-webkit-scrollbar { display: none; }
+    .scroll-y { overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+    .safe-bottom { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+    .pt-safe { padding-top: max(0px, env(safe-area-inset-top)); }
+    #side-panel { transition: transform 0.28s cubic-bezier(.4,0,.2,1); }
+    .cost-input { min-width: 80px; }
+    button:active, [data-action]:active, label:active { opacity: 0.7; }
+  </style>
+</head>
+<body class="bg-slate-100">
+
+<div id="panel-overlay" class="fixed inset-0 bg-black/50 z-40 hidden"></div>
+<div id="side-panel" class="fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl -translate-x-full flex flex-col">
+  <div class="bg-gray-900 text-white px-4 pt-safe pb-4 flex-shrink-0">
+    <div class="flex justify-between items-center mt-3">
+      <p class="font-bold text-lg">Projects</p>
+      <button id="close-panel-btn" class="text-gray-400 text-2xl leading-none p-2">✕</button>
+    </div>
+  </div>
+  <div class="flex-1 overflow-y-auto" id="panel-list"></div>
+  <div class="p-4 border-t border-gray-100 flex-shrink-0 safe-bottom">
+    <button id="new-project-btn" class="w-full py-3.5 rounded-xl bg-orange-500 text-white font-semibold text-sm">+ New Project</button>
+  </div>
+</div>
+
+<div id="settings-modal" class="fixed inset-0 z-[60] hidden">
+  <div id="settings-bg" class="absolute inset-0 bg-black/60"></div>
+  <div class="absolute inset-x-0 bottom-0 pointer-events-auto">
+    <div class="bg-white rounded-t-2xl shadow-2xl max-h-[75vh] flex flex-col">
+      <div class="px-5 pt-5 pb-3 flex justify-between items-center border-b border-gray-100 flex-shrink-0">
+        <h2 class="font-bold text-lg text-gray-900">Settings</h2>
+        <button id="settings-close" class="text-gray-400 text-2xl leading-none p-2">✕</button>
+      </div>
+      <div class="overflow-y-auto flex-1 px-5 py-5 safe-bottom space-y-6">
+        <div>
+          <h3 class="font-semibold text-gray-800 mb-1">Price Schedule</h3>
+          <p class="text-sm text-gray-400 mb-4">Upload a CSV to update line-item prices globally. Only the <code class="bg-gray-100 px-1 rounded text-xs">id</code> and <code class="bg-gray-100 px-1 rounded text-xs">cost</code> columns matter.</p>
+          <div id="price-status" class="mb-4 px-4 py-3 rounded-xl text-sm bg-gray-50 text-gray-500">Using default prices</div>
+          <div class="space-y-3">
+            <label class="w-full block cursor-pointer">
+              <span class="block w-full py-3.5 rounded-xl bg-orange-500 text-white font-semibold text-sm text-center">Upload Updated Prices (CSV)</span>
+              <input type="file" accept=".csv,.CSV" id="price-csv-input" class="hidden" />
+            </label>
+            <button id="reset-prices-btn" class="w-full py-3 rounded-xl text-red-400 text-sm font-semibold border-2 border-red-100 hidden">Reset to Default Prices</button>
+          </div>
+        </div>
+        <div class="border-t border-gray-100 pt-6">
+          <h3 class="font-semibold text-gray-800 mb-1">Custom Items</h3>
+          <p class="text-sm text-gray-400 mb-4">Items you have added manually across all projects.</p>
+          <button id="manage-custom-items-btn" class="w-full py-3.5 rounded-xl bg-gray-100 text-gray-700 font-semibold text-sm">Manage Custom Items</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app-modal" class="fixed inset-0 z-[60] hidden">
+  <div id="modal-bg" class="absolute inset-0 bg-black/60"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-5 pointer-events-none">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 pointer-events-auto">
+      <h3 id="modal-title" class="font-bold text-gray-900 text-lg mb-4">Rename</h3>
+      <input id="modal-input" type="text"
+        class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-orange-400 mb-4" />
+      <div class="flex gap-3">
+        <button id="modal-cancel" class="flex-1 py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-semibold">Cancel</button>
+        <button id="modal-confirm" class="flex-1 py-3 rounded-xl bg-orange-500 text-white font-semibold">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app"></div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+const CATEGORIES = [
+  {
+    id: 'interior-general', name: 'Interior / General',
+    items: [
+      { id: 'ig-01', name: 'Refinish Hardwood Floor',                        cost: 2.35,    unit: 'sqft' },
+      { id: 'ig-02', name: 'New Hardwoods 1.5"',                             cost: 10.00,   unit: 'sqft' },
+      { id: 'ig-03', name: 'New Hardwoods 2"',                               cost: 4.75,    unit: 'sqft' },
+      { id: 'ig-04', name: 'Hardwood Splicing',                              cost: 8.40,    unit: 'sqft' },
+      { id: 'ig-05', name: 'Vinyl Plank',                                    cost: 2.50,    unit: 'sqft',          notes: '$1.60–1.80/SF material' },
+      { id: 'ig-06', name: 'Carpet',                                         cost: 1.90,    unit: 'sqft' },
+      { id: 'ig-07', name: 'Interior Paint — 2 Tone',                        cost: 2.95,    unit: 'sqft' },
+      { id: 'ig-08', name: 'Drywall Repair',                                 cost: 900.00,  unit: '1,000 sqft' },
+      { id: 'ig-09', name: 'Wallpaper Removal',                              cost: 250.00,  unit: 'room' },
+      { id: 'ig-10', name: 'Interior Door — Hollow Slab',                    cost: 125.00,  unit: 'ea.' },
+      { id: 'ig-11', name: 'Interior Door Hardware (Knob + Hinges + Labor)', cost: 25.00,   unit: 'ea.' },
+      { id: 'ig-12', name: 'Bifold Door with Framing',                       cost: 400.00,  unit: 'ea.' },
+      { id: 'ig-13', name: 'Interior Door — Pre-hung',                       cost: 200.00,  unit: 'ea.' },
+      { id: 'ig-14', name: 'Front Entry Door',                               cost: 475.00,  unit: 'ea.',   min: 500 },
+      { id: 'ig-15', name: 'Front Entry Door Hardware',                      cost: 80.00,   unit: 'ea.',   min: 75,  defaultQty: 1 },
+      { id: 'ig-16', name: 'Exterior Door Hardware',                         cost: 75.00,   unit: 'handle',defaultQty: 1 },
+      { id: 'ig-17', name: 'Exterior Insulated Side Door (Installed)',       cost: 500.00,  unit: 'ea.' },
+      { id: 'ig-18', name: 'Sliding Glass Door',                             cost: 1025.00, unit: 'ea.' },
+      { id: 'ig-19', name: 'Trim Out (Casing, Crown, Baseboard)',            cost: 3.75,    unit: 'LF',    min: 500, defaultQty: 143 },
+      { id: 'ig-20', name: 'MISC / Punch List',                              cost: 2650.00, unit: 'flat',  defaultQty: 1 },
+      { id: 'ig-21', name: 'Finish Out Labor',                               cost: 1350.00, unit: 'flat',  defaultQty: 1 },
+      { id: 'ig-22', name: 'Light Fixtures',                                 cost: 70.00,   unit: '100 sqft' },
+      { id: 'ig-23', name: 'Bedbug Spray / Heat Treat',                      cost: 475.00,  unit: 'ea.',   min: 100 },
+      { id: 'ig-24', name: 'Termite Treatment',                              cost: 650.00,  unit: 'ea.' },
+      { id: 'ig-25', name: 'Demo',                                           cost: 1375.00, unit: 'variable', defaultQty: 1 },
+      { id: 'ig-26', name: 'Haul Off',                                       cost: 725.00,  unit: 'load',  defaultQty: 1, notes: '1–40yd dumpster per load' },
+      { id: 'ig-27', name: 'Final Cleaning',                                 cost: 325.00,  unit: 'flat',  min: 250, defaultQty: 1 },
+      { id: 'ig-28', name: 'Staging',                                        cost: 0.90,    unit: 'sqft',  notes: '45 days; +$500 if > 45 days' },
+      { id: 'ig-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ig-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ig-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ig-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'kitchen', name: 'Kitchen',
+    items: [
+      { id: 'kt-01', name: 'Hinges and Pulls',               cost: 275.00,  unit: 'kitchen' },
+      { id: 'kt-02', name: 'Cabinets Uppers',                cost: 125.00,  unit: 'LF' },
+      { id: 'kt-03', name: 'Cabinets Lowers',                cost: 150.00,  unit: 'LF' },
+      { id: 'kt-04', name: 'Cabinet Door Faces Only',        cost: 80.00,   unit: 'door' },
+      { id: 'kt-05', name: 'Cabinets (Labor & Paint)',       cost: 1100.00, unit: 'kitchen' },
+      { id: 'kt-06', name: 'Granite + 4" Splash Guard',      cost: 40.00,   unit: 'LF',      min: 1050 },
+      { id: 'kt-07', name: 'Backsplash',                     cost: 725.00,  unit: 'house' },
+      { id: 'kt-08', name: 'Misc Woodwork',                  cost: 500.00,  unit: 'variable' },
+      { id: 'kt-09', name: 'Tile — Large Areas',             cost: 6.45,    unit: 'sqft' },
+      { id: 'kt-10', name: 'Tile — Small Areas',             cost: 10.00,   unit: 'sqft' },
+      { id: 'kt-11', name: 'Undermount Kitchen Sink',        cost: 325.00,  unit: 'ea.' },
+      { id: 'kt-12', name: 'Microwave / Hood',               cost: 500.00,  unit: 'ea.' },
+      { id: 'kt-13', name: 'Range',                          cost: 725.00,  unit: 'ea.' },
+      { id: 'kt-14', name: 'Wall Oven',                      cost: 1075.00, unit: 'ea.' },
+      { id: 'kt-15', name: 'Cooktop',                        cost: 550.00,  unit: 'ea.' },
+      { id: 'kt-16', name: 'Dishwasher',                     cost: 575.00,  unit: 'ea.' },
+      { id: 'kt-17', name: 'Fridge',                         cost: 1175.00, unit: 'ea.' },
+      { id: 'kt-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'kt-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'kt-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'bathroom', name: 'Bathroom', type: 'multi',
+    items: [
+      { id: 'ba-01', name: 'Granite ($/LF)',                                       cost: 35.00,   unit: 'LF' },
+      { id: 'ba-02', name: 'New Bottom Vanity',                                    cost: 125.00,  unit: 'LF' },
+      { id: 'ba-03', name: 'Home Depot Vanity w/ Sink (18")',                      cost: 225.00,  unit: 'ea.' },
+      { id: 'ba-04', name: 'Toilet',                                               cost: 150.00,  unit: 'ea.' },
+      { id: 'ba-05', name: 'Tile — Large Areas',                                   cost: 5.80,    unit: 'sqft' },
+      { id: 'ba-06', name: 'Tile — Small Areas',                                   cost: 10.00,   unit: 'sqft' },
+      { id: 'ba-07', name: 'Reglaze Tub or Chemical Clean',                        cost: 350.00,  unit: 'ea.' },
+      { id: 'ba-08', name: 'Reglaze Tub + Surround',                               cost: 750.00,  unit: 'ea.' },
+      { id: 'ba-09', name: 'Reglaze Shower',                                       cost: 1325.00, unit: 'ea.' },
+      { id: 'ba-10', name: 'Tiled Shower Tear Out + Tile Install',                 cost: 3100.00, unit: 'ea.' },
+      { id: 'ba-11', name: 'Tub Tile Surround Tear Out + Tile Install (incl. tub)', cost: 2250.00, unit: 'ea.' },
+      { id: 'ba-12', name: 'Shower Plastic Insert Tear Out + New Insert',          cost: 825.00,  unit: 'ea.' },
+      { id: 'ba-13', name: 'Tub Tear Out + New Insert & Tub',                      cost: 1575.00, unit: 'ea.' },
+      { id: 'ba-14', name: 'Undermount Sink',                                      cost: 150.00,  unit: 'ea.' },
+      { id: 'ba-15', name: 'Mirror',                                               cost: 200.00,  unit: 'ea.' },
+      { id: 'ba-16', name: 'HVL (needed if no window)',                            cost: 275.00,  unit: 'ea.' },
+      { id: 'ba-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ba-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ba-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'bedroom', name: 'Bedroom', type: 'multi',
+    items: [
+      { id: 'br-01', name: 'Refinish Hardwood Floor',      cost: 2.35,    unit: 'sqft' },
+      { id: 'br-02', name: 'New Hardwoods',                cost: 4.75,    unit: 'sqft' },
+      { id: 'br-03', name: 'Vinyl Plank',                  cost: 2.50,    unit: 'sqft' },
+      { id: 'br-04', name: 'Carpet',                       cost: 1.90,    unit: 'sqft' },
+      { id: 'br-05', name: 'Interior Paint — 2 Tone',      cost: 2.95,    unit: 'sqft' },
+      { id: 'br-06', name: 'Drywall Repair',               cost: 900.00,  unit: '1,000 sqft' },
+      { id: 'br-07', name: 'Interior Door — Hollow Slab',  cost: 125.00,  unit: 'ea.' },
+      { id: 'br-08', name: 'Interior Door Hardware',       cost: 25.00,   unit: 'ea.' },
+      { id: 'br-09', name: 'Bifold Door',                  cost: 400.00,  unit: 'ea.' },
+      { id: 'br-10', name: 'Closet Rod',                   cost: 25.00,   unit: 'ea.' },
+      { id: 'br-11', name: 'Closet Shelving',              cost: 85.00,   unit: 'ea.' },
+      { id: 'br-12', name: 'Closet Organizer System',      cost: 350.00,  unit: 'ea.' },
+      { id: 'br-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'br-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'br-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'br-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'living-common', name: 'Living / Common', type: 'multi',
+    items: [
+      { id: 'lc-01', name: 'Refinish Hardwood Floor',      cost: 2.35,    unit: 'sqft' },
+      { id: 'lc-02', name: 'New Hardwoods',                cost: 4.75,    unit: 'sqft' },
+      { id: 'lc-03', name: 'Vinyl Plank',                  cost: 2.50,    unit: 'sqft' },
+      { id: 'lc-04', name: 'Carpet',                       cost: 1.90,    unit: 'sqft' },
+      { id: 'lc-05', name: 'Interior Paint — 2 Tone',      cost: 2.95,    unit: 'sqft' },
+      { id: 'lc-06', name: 'Drywall Repair',               cost: 900.00,  unit: '1,000 sqft' },
+      { id: 'lc-07', name: 'Interior Door — Hollow Slab',  cost: 125.00,  unit: 'ea.' },
+      { id: 'lc-08', name: 'Interior Door Hardware',       cost: 25.00,   unit: 'ea.' },
+      { id: 'lc-09', name: 'Light Fixture',                cost: 70.00,   unit: '100 sqft' },
+      { id: 'lc-10', name: 'Ceiling Fan',                  cost: 185.00,  unit: 'ea.' },
+      { id: 'lc-11', name: 'Recessed Lighting (per can)',  cost: 95.00,   unit: 'ea.' },
+      { id: 'lc-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'lc-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'lc-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'lc-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'systems', name: 'Systems & Structure',
+    items: [
+      { id: 'as-01', name: 'Furnace',                                  cost: 3350.00, unit: 'ea.',      hasYear: true, notes: 'Photo of serial required' },
+      { id: 'as-02', name: 'Condensing Unit',                          cost: 3300.00, unit: 'ea.',      hasYear: true, notes: 'Photo of serial required' },
+      { id: 'as-03', name: 'Package Unit',                             cost: 4700.00, unit: 'ea.' },
+      { id: 'as-04', name: 'A-Coil (if no condensing unit)',           cost: 1625.00, unit: 'ea.' },
+      { id: 'as-05', name: 'Ducting (if NO HVAC)',                     cost: 3200.00, unit: 'ea.' },
+      { id: 'as-06', name: 'Duct Cleaning — Floor Vents',              cost: 550.00,  unit: 'ea.' },
+      { id: 'as-07', name: 'Window Unit Replacement 220',              cost: 575.00,  unit: 'ea.' },
+      { id: 'as-08', name: 'Hot Water Heater w/ Expansion Tank',      cost: 1425.00, unit: 'ea.',      hasYear: true, notes: 'Photo of serial required' },
+      { id: 'as-09', name: 'Hot Water Heater Expansion Tank Only',    cost: 200.00,  unit: 'ea.' },
+      { id: 'as-10', name: 'Switches / Outlets',                       cost: 1400.00, unit: 'house' },
+      { id: 'as-11', name: 'Standard Electrical',                      cost: 1650.00, unit: 'house',    defaultQty: 1 },
+      { id: 'as-12', name: 'Subfloor',                                 cost: 8.20,    unit: 'sqft' },
+      { id: 'as-13', name: 'Framing',                                  cost: 950.00,  unit: 'variable' },
+      { id: 'as-14', name: 'Structural (Pier)',                        cost: 375.00,  unit: 'pier' },
+      { id: 'as-15', name: 'Structural Foam Injection',                cost: 5.85,    unit: 'sqft of affected area' },
+      { id: 'as-16', name: 'Roof',                                     cost: 1100.00, unit: '225 sqft L&M', min: 1000, notes: 'Photo each side required' },
+      { id: 'as-17', name: 'Plumbing',                                 cost: 1000.00, unit: 'variable', defaultQty: 1 },
+      { id: 'as-18', name: 'Electrical Panel Swap to 200A',            cost: 2350.00, unit: 'ea.' },
+      { id: 'as-19', name: 'Full Electrical Rewire (to Studs)',        cost: 5.65,    unit: 'sqft' },
+      { id: 'as-20', name: 'Full Electrical Rewire (leaving Drywall)', cost: 9.15,    unit: 'sqft' },
+      { id: 'as-21', name: 'Wall Insulation (to Studs)',               cost: 1.20,    unit: 'sqft' },
+      { id: 'as-22', name: 'Attic Insulation',                         cost: 1225.00, unit: '1,600 sqft house' },
+      { id: 'as-23', name: 'New Drywall to Studs (L&M)',               cost: 5.20,    unit: 'sqft' },
+      { id: 'as-24', name: 'Aluminum Wiring',                          cost: 2450.00, unit: 'variable' },
+      { id: 'as-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'as-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'as-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'as-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+  {
+    id: 'exterior', name: 'Exterior',
+    items: [
+      { id: 'ex-01', name: 'Fence Repair — Chain Link / Wood Gate', cost: 225.00,  unit: 'variable' },
+      { id: 'ex-02', name: 'Fence Repair — Chain Link',             cost: 275.00,  unit: 'LF' },
+      { id: 'ex-03', name: 'Fence Repair — Privacy 6ft',            cost: 30.00,   unit: 'LF' },
+      { id: 'ex-04', name: 'Landscaping',                           cost: 450.00,  unit: 'variable', min: 500, defaultQty: 1 },
+      { id: 'ex-05', name: "Vinyl Siding (10'x10')",                cost: 300.00,  unit: 'square' },
+      { id: 'ex-06', name: 'Tuck Pointing',                         cost: 225.00,  unit: 'variable' },
+      { id: 'ex-07', name: 'Exterior Paint',                        cost: 2.60,    unit: 'sqft' },
+      { id: 'ex-08', name: 'Exterior Wood Repair',                  cost: 525.00,  unit: 'variable', min: 500 },
+      { id: 'ex-09', name: "Siding Repair (10'x10')",               cost: 975.00,  unit: 'section' },
+      { id: 'ex-10', name: 'Tree Trimming',                         cost: 450.00,  unit: 'variable' },
+      { id: 'ex-11', name: 'Tree Removal (w/o stump)',              cost: 1450.00, unit: 'tree' },
+      { id: 'ex-12', name: 'Stump Grinding',                        cost: 250.00,  unit: 'stump' },
+      { id: 'ex-13', name: 'Aluminum Window Paint (Int/Ext)',       cost: 700.00,  unit: 'house' },
+      { id: 'ex-14', name: 'Windows (3x5 sash)',                    cost: 425.00,  unit: 'ea.' },
+      { id: 'ex-15', name: 'Window Repair — Non-Insulated (6x6+)',  cost: 35.00,   unit: 'sf' },
+      { id: 'ex-16', name: 'Window Repair — Insulated (6x6+)',      cost: 40.00,   unit: 'sf' },
+      { id: 'ex-17', name: 'Aluminum Framed Window Pane',           cost: 100.00,  unit: 'pane' },
+      { id: 'ex-18', name: 'Guttering',                             cost: 4.15,    unit: 'LF' },
+      { id: 'ex-19', name: 'Concrete w/ Demo',                      cost: 200.00,  unit: 'sqft' },
+      { id: 'ex-20', name: 'Mowing (summer, every 2 weeks)',        cost: 45.00,   unit: 'mowing', defaultQty: 12 },
+      { id: 'ex-21', name: 'Garage Door — 1 Car',                   cost: 975.00,  unit: 'ea.' },
+      { id: 'ex-22', name: 'Garage Door — 2 Car (Installed)',       cost: 1225.00, unit: 'ea.' },
+      { id: 'ex-23', name: 'Garage Conversion',                     cost: 8850.00, unit: 'ea.' },
+      { id: 'ex-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ex-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ex-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ex-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ex-nan-5', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+    ]
+  },
+];
+
+const GROUPS = {
+  'ig:flooring':    { label: 'Flooring',             ids: ['ig-nan-1','ig-01','ig-02','ig-03','ig-04','ig-05','ig-06'] },
+  'ig:paint':       { label: 'Paint & Wall Repair',  ids: ['ig-nan-2','ig-07','ig-08','ig-09'] },
+  'ig:doors':       { label: 'Doors',                ids: ['ig-nan-3','ig-10','ig-11','ig-12','ig-13','ig-14','ig-15','ig-16','ig-17','ig-18'] },
+  'ig:pest':        { label: 'Pest Control',          ids: ['ig-nan-4','ig-23','ig-24'] },
+  'kt:cabinets':    { label: 'Cabinets',              ids: ['kt-nan-1','kt-01','kt-02','kt-03','kt-04','kt-05'] },
+  'kt:counters':    { label: 'Countertops & Tile',   ids: ['kt-nan-2','kt-06','kt-07','kt-08','kt-09','kt-10'] },
+  'kt:appliances':  { label: 'Appliances',            ids: ['kt-nan-3','kt-11','kt-12','kt-13','kt-14','kt-15','kt-16','kt-17'] },
+  'ba:vanity':      { label: 'Vanity & Countertop',  ids: ['ba-nan-1','ba-01','ba-02','ba-03','ba-14'] },
+  'ba:tub':         { label: 'Tub & Shower',         ids: ['ba-nan-2','ba-07','ba-08','ba-09','ba-10','ba-11','ba-12','ba-13'] },
+  'ba:tile':        { label: 'Tile',                  ids: ['ba-nan-3','ba-05','ba-06'] },
+  'br:flooring':    { label: 'Flooring',             ids: ['br-nan-1','br-01','br-02','br-03','br-04'] },
+  'br:paint':       { label: 'Paint & Wall Repair',  ids: ['br-nan-2','br-05','br-06'] },
+  'br:doors':       { label: 'Doors',                ids: ['br-nan-4','br-07','br-08','br-09'] },
+  'br:closet':      { label: 'Closet',                ids: ['br-nan-3','br-10','br-11','br-12'] },
+  'lc:flooring':    { label: 'Flooring',             ids: ['lc-nan-1','lc-01','lc-02','lc-03','lc-04'] },
+  'lc:paint':       { label: 'Paint & Wall Repair',  ids: ['lc-nan-2','lc-05','lc-06'] },
+  'lc:doors':       { label: 'Doors',                ids: ['lc-nan-4','lc-07','lc-08'] },
+  'lc:lighting':    { label: 'Lighting',              ids: ['lc-nan-3','lc-09','lc-10','lc-11'] },
+  'as:hvac':        { label: 'HVAC',                  ids: ['as-nan-1','as-01','as-02','as-03','as-04','as-05','as-06','as-07'] },
+  'as:electrical':  { label: 'Electrical',            ids: ['as-nan-2','as-10','as-11','as-18','as-19','as-20','as-24'] },
+  'as:structural':  { label: 'Structural',            ids: ['as-nan-3','as-12','as-13','as-14','as-15'] },
+  'as:insulation':  { label: 'Insulation & Drywall', ids: ['as-nan-4','as-21','as-22','as-23'] },
+  'ex:fence':       { label: 'Fence',                 ids: ['ex-nan-1','ex-01','ex-02','ex-03'] },
+  'ex:siding':      { label: 'Siding',                ids: ['ex-nan-2','ex-05','ex-09'] },
+  'ex:windows':     { label: 'Windows',               ids: ['ex-nan-3','ex-13','ex-14','ex-15','ex-16','ex-17'] },
+  'ex:garage':      { label: 'Garage',                ids: ['ex-nan-4','ex-21','ex-22','ex-23'] },
+  'ex:trees':       { label: 'Trees',                 ids: ['ex-nan-5','ex-10','ex-11','ex-12'] },
+};
+
+const MULTI_CATS = CATEGORIES.filter(c => c.type === 'multi');
+
+// ============================================================
+// STORAGE
+// ============================================================
+const STORAGE_KEY = 'sparkRepairProjects_v1';
+const PRICES_KEY  = 'sparkRepairPrices_v1';
+
+function loadPriceOverrides() {
+  try { return JSON.parse(localStorage.getItem(PRICES_KEY) || '{}'); } catch { return {}; }
+}
+function savePriceOverrides() {
+  try { localStorage.setItem(PRICES_KEY, JSON.stringify(state.priceOverrides)); } catch {}
+}
+
+function loadProjects() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveProjects(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list.map(p => ({ ...p, photos: {} }))));
+    } catch {}
+  }
+}
+
+function saveCurrentState() {
+  if (!state.currentProjectId) return;
+  const list = loadProjects();
+  const snap = {
+    id: state.currentProjectId,
+    name: state.currentProjectName,
+    savedAt: new Date().toISOString(),
+    items: state.items,
+    photos: state.photos,
+    rooms: state.rooms,
+    customItems: state.customItems,
+    projectPriceOverrides: state.projectPriceOverrides,
+    notes: state.notes,
+    deal: state.deal,
+  };
+  const idx = list.findIndex(p => p.id === state.currentProjectId);
+  if (idx >= 0) list[idx] = snap; else list.unshift(snap);
+  saveProjects(list);
+}
+
+let _saveTimer;
+function scheduleSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveCurrentState, 800);
+}
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  currentCat: 0,
+  showSummary: false,
+  currentProjectId: null,
+  currentProjectName: 'New Estimate',
+  items: {},
+  photos: {},
+  priceOverrides: {},
+  projectPriceOverrides: {},
+  customItems: {},
+  notes: {},
+  expandedGroups: [],
+  rooms: {},
+  deal: { arv: '', purchasePrice: '', closingCosts: '', holdingCosts: '' },
+};
+
+function blankItemState() {
+  return { checked: false, qty: '', year: '' };
+}
+
+function getRoomData(cat) {
+  return state.rooms[cat.id] || { instances: [], current: 0 };
+}
+
+function getMultiItems(cat) {
+  const custom = state.customItems[cat.id] || [];
+  return [...cat.items, ...custom];
+}
+
+function initRooms() {
+  state.rooms = {};
+  CATEGORIES.forEach(cat => {
+    if (cat.type === 'multi') {
+      const defaults = [];
+      if (cat.id === 'bathroom') {
+        defaults.push({ id: 'b1', name: 'Bathroom 1' }, { id: 'b2', name: 'Bathroom 2' });
+      } else if (cat.id === 'living-common') {
+        defaults.push({ id: 'lc1', name: 'Living Room' });
+      }
+      state.rooms[cat.id] = { instances: defaults, current: 0 };
+    }
+  });
+}
+
+function initState() {
+  state.items = {};
+  state.photos = {};
+  state.customItems = {};
+  state.projectPriceOverrides = {};
+  state.expandedGroups = [];
+  initRooms();
+  CATEGORIES.forEach(cat => {
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      rd.instances.forEach(inst => {
+        cat.items.forEach(item => { state.items[`${inst.id}:${item.id}`] = blankItemState(); });
+      });
+    } else {
+      cat.items.forEach(item => { state.items[item.id] = blankItemState(); });
+    }
+  });
+}
+
+function loadProjectIntoState(proj) {
+  state.currentProjectId = proj.id;
+  state.currentProjectName = proj.name;
+  state.items = proj.items || {};
+  state.photos = proj.photos || {};
+  state.rooms = proj.rooms || {};
+  state.customItems = proj.customItems || {};
+  state.projectPriceOverrides = proj.projectPriceOverrides || {};
+  state.deal = proj.deal || { arv: '', purchasePrice: '', closingCosts: '', holdingCosts: '' };
+  state.notes = proj.notes || {};
+  state.currentCat = 0;
+  state.showSummary = false;
+  state.expandedGroups = [];
+  // Ensure all multi categories have valid room config
+  CATEGORIES.forEach(cat => {
+    if (cat.type === 'multi' && !state.rooms[cat.id]) {
+      state.rooms[cat.id] = { instances: [], current: 0 };
+    }
+  });
+  // Fill in any missing item keys
+  CATEGORIES.forEach(cat => {
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      rd.instances.forEach(inst => {
+        getMultiItems(cat).forEach(item => {
+          const k = `${inst.id}:${item.id}`;
+          if (!state.items[k]) state.items[k] = blankItemState();
+        });
+      });
+    } else {
+      getMultiItems(cat).forEach(item => {
+        if (!state.items[item.id]) state.items[item.id] = blankItemState();
+      });
+    }
+  });
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmtTotal(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+  catch { return ''; }
+}
+
+function getItemCost(item) {
+  const po = state.projectPriceOverrides[item.id];
+  if (po !== undefined) return po;
+  const ov = state.priceOverrides[item.id];
+  return ov !== undefined ? ov : item.cost;
+}
+
+function parseCsvLine(line) {
+  const result = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+    else if (c === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else cur += c;
+  }
+  result.push(cur.trim()); return result;
+}
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const headers = parseCsvLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = parseCsvLine(line);
+    return Object.fromEntries(headers.map((h, i) => [h.trim(), vals[i] ?? '']));
+  });
+}
+
+function findItemDef(id) {
+  if (id.includes(':')) { const iid = id.split(':')[1]; return findItemDef(iid); }
+  for (const cat of CATEGORIES) {
+    const found = cat.items.find(i => i.id === id);
+    if (found) return found;
+    const custom = (state.customItems[cat.id] || []).find(i => i.id === id);
+    if (custom) return custom;
+  }
+  return null;
+}
+
+function calcItem(item, s) {
+  if (!s || !s.checked) return 0;
+  const q = parseFloat(s.qty);
+  if (!q || q <= 0) return 0;
+  const raw = q * getItemCost(item);
+  return item.min ? Math.max(raw, item.min) : raw;
+}
+
+function calcInstanceTotal(cat, instance) {
+  return getMultiItems(cat).reduce((t, item) => t + calcItem(item, state.items[`${instance.id}:${item.id}`]), 0);
+}
+
+function calcCategoryTotal(cat) {
+  if (cat.type === 'multi') {
+    const rd = getRoomData(cat);
+    return rd.instances.reduce((t, inst) => t + calcInstanceTotal(cat, inst), 0);
+  }
+  return getMultiItems(cat).reduce((t, item) => t + calcItem(item, state.items[item.id]), 0);
+}
+
+function calcRunningTotal() { return CATEGORIES.reduce((t, cat) => t + calcCategoryTotal(cat), 0); }
+
+function calcProgressUnits() {
+  const itemToGroup = {};
+  for (const [gid, g] of Object.entries(GROUPS)) {
+    for (const id of g.ids) itemToGroup[id] = gid;
+  }
+  let total = 0, checked = 0;
+  for (const cat of CATEGORIES) {
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      for (const inst of rd.instances) {
+        const seen = new Set();
+        for (const item of getMultiItems(cat)) {
+          const gid = itemToGroup[item.id];
+          if (gid) {
+            const key = `${inst.id}:${gid}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              total++;
+              if (GROUPS[gid].ids.some(id => state.items[`${inst.id}:${id}`]?.checked)) checked++;
+            }
+          } else {
+            total++;
+            if (state.items[`${inst.id}:${item.id}`]?.checked) checked++;
+          }
+        }
+      }
+    } else {
+      const seen = new Set();
+      for (const item of getMultiItems(cat)) {
+        const gid = itemToGroup[item.id];
+        if (gid) {
+          if (!seen.has(gid)) {
+            seen.add(gid);
+            total++;
+            if (GROUPS[gid].ids.some(id => state.items[id]?.checked)) checked++;
+          }
+        } else {
+          total++;
+          if (state.items[item.id]?.checked) checked++;
+        }
+      }
+    }
+  }
+  return { total, checked };
+}
+
+function checkedCount(cat) {
+  if (cat.type === 'multi') {
+    const rd = getRoomData(cat);
+    return rd.instances.reduce((t, inst) =>
+      t + getMultiItems(cat).filter(item => state.items[`${inst.id}:${item.id}`]?.checked).length, 0);
+  }
+  return getMultiItems(cat).filter(item => state.items[item.id]?.checked).length;
+}
+
+function genItemId(catId) {
+  const prefix = catId === 'interior-general' ? 'ig' : catId.substring(0, 2);
+  const existing = Object.keys(state.items).filter(k => k.startsWith(prefix + '-cus-'));
+  const n = existing.length + 1;
+  return `${prefix}-cus-${n}`;
+}
+
+// ============================================================
+// MODAL
+// ============================================================
+let pendingModal = null;
+
+function openModal(title, placeholder, defaultVal, onConfirm) {
+  pendingModal = onConfirm;
+  document.getElementById('modal-title').textContent = title;
+  const inp = document.getElementById('modal-input');
+  inp.placeholder = placeholder || '';
+  inp.value = defaultVal || '';
+  document.getElementById('app-modal').classList.remove('hidden');
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+
+function confirmModal() {
+  const val = document.getElementById('modal-input').value.trim();
+  if (val && pendingModal) pendingModal(val);
+  closeModal();
+}
+
+function closeModal() {
+  document.getElementById('app-modal').classList.add('hidden');
+  pendingModal = null;
+}
+
+// ============================================================
+// PANEL
+// ============================================================
+function openPanel() {
+  refreshPanelList();
+  document.getElementById('side-panel').classList.remove('-translate-x-full');
+  document.getElementById('panel-overlay').classList.remove('hidden');
+}
+
+function closePanel() {
+  document.getElementById('side-panel').classList.add('-translate-x-full');
+  document.getElementById('panel-overlay').classList.add('hidden');
+}
+
+function refreshPanelList() {
+  const list = loadProjects();
+  const panelList = document.getElementById('panel-list');
+  panelList.innerHTML = list.length === 0
+    ? '<p class="text-center text-gray-400 text-sm py-10">No saved projects</p>'
+    : list.map(p => {
+        const isActive = p.id === state.currentProjectId;
+        const safeName = p.name.replace(/"/g, '&quot;');
+        return `<div class="border-b border-gray-50 flex items-stretch ${isActive ? 'bg-orange-50' : ''}">
+          <button class="panel-proj-btn flex-1 text-left px-4 py-4" data-proj-id="${p.id}">
+            <p class="font-semibold text-sm ${isActive ? 'text-orange-700' : 'text-gray-900'}">${p.name}</p>
+            <p class="text-xs text-gray-400 mt-0.5">${fmtDate(p.savedAt)}</p>
+            ${isActive ? '<span class="text-orange-400 text-xs font-medium block mt-1">Active</span>' : ''}
+          </button>
+          <div class="flex flex-col justify-center gap-1.5 pr-3">
+            <button class="panel-rename-btn p-2.5 rounded-lg text-gray-400" data-proj-id="${p.id}" data-proj-name="${safeName}" title="Rename">${PENCIL}</button>
+            ${!isActive ? `<button class="panel-delete-btn p-2.5 rounded-lg text-red-300" data-proj-id="${p.id}" data-proj-name="${safeName}" title="Delete">${TRASH}</button>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+
+  panelList.querySelectorAll('.panel-proj-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.projId;
+      if (id === state.currentProjectId) { closePanel(); return; }
+      saveCurrentState();
+      const proj = loadProjects().find(p => p.id === id);
+      if (proj) { loadProjectIntoState(proj); render(); closePanel(); }
+    });
+  });
+
+  panelList.querySelectorAll('.panel-rename-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.projId;
+      openModal('Rename Project', 'e.g. 123 Main St', btn.dataset.projName, name => {
+        const saved = loadProjects();
+        const proj = saved.find(p => p.id === id);
+        if (proj) {
+          proj.name = name;
+          saveProjects(saved);
+          if (id === state.currentProjectId) { state.currentProjectName = name; render(); }
+        }
+        refreshPanelList();
+      });
+    });
+  });
+
+  panelList.querySelectorAll('.panel-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.projId;
+      if (!confirm(`Delete "${btn.dataset.projName}"? This cannot be undone.`)) return;
+      saveProjects(loadProjects().filter(p => p.id !== id));
+      refreshPanelList();
+    });
+  });
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+const PENCIL = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+const GEAR   = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+const TRASH  = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+const PLUS   = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+
+function render() {
+  document.getElementById('app').innerHTML = state.showSummary ? renderSummary() : renderMain();
+  bindEvents();
+}
+
+function renderHeader() {
+  const total = calcRunningTotal();
+  const activeSections = CATEGORIES.filter(c => calcCategoryTotal(c) > 0).length;
+  const { total: totalItems, checked: checkedItems } = calcProgressUnits();
+  const pct = totalItems === 0 ? 0 : Math.round(checkedItems / totalItems * 100);
+  return `
+    <div class="bg-gray-900 text-white shadow-lg flex-shrink-0 pt-safe">
+      <div class="px-4 pt-2 pb-1 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <button data-action="open-panel" class="p-2 -ml-1 text-gray-400">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
+          <img src="logo.png" class="h-7 w-auto" alt="Spark Group" />
+        </div>
+        <p class="text-xs text-orange-400 font-semibold tracking-wide flex items-center gap-1.5">
+          <span>SPARK ESTIMATOR</span>
+        </p>
+        <div class="flex items-center gap-2">
+          <p class="text-lg font-bold tabular-nums text-white">${fmtTotal(total)}</p>
+          <button data-action="open-settings" class="p-2 text-gray-400" title="Settings">${GEAR}</button>
+          <button data-action="share-project" class="p-2 text-gray-400" title="Share">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
+          <button data-action="export-excel" class="p-2 -mr-1 text-gray-400" title="Export to Excel">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="px-4 pt-1 pb-4">
+        <div class="flex items-center gap-2 mt-1.5">
+          <p class="text-xs text-gray-400 truncate flex-1">${state.currentProjectName} · ${activeSections} active section${activeSections !== 1 ? 's' : ''}</p>
+          <button data-action="rename-project" class="flex-shrink-0 text-gray-500 p-2" title="Rename project">${PENCIL}</button>
+        </div>
+        <div class="mt-2.5 flex items-center gap-3">
+          <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div class="h-full bg-orange-500 rounded-full" style="width:${pct}%;transition:width 0.5s ease"></div>
+          </div>
+          <span class="text-xs text-gray-500 flex-shrink-0 tabular-nums">${checkedItems}/${totalItems} groups</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderCategoryTabs() {
+  return `<div class="bg-white border-b border-gray-200 scroll-x flex flex-shrink-0">
+    ${CATEGORIES.map((cat, i) => {
+      const active = i === state.currentCat;
+      const total = calcCategoryTotal(cat);
+      const count = checkedCount(cat);
+      return `<button data-action="switch-cat" data-index="${i}"
+        class="flex-none px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${active ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-gray-500'}">
+        ${cat.name}
+        ${count > 0 ? `<span class="ml-1 text-xs ${active ? 'text-orange-500' : 'text-gray-400'}">${total > 0 ? fmtTotal(total) : count + ' ✓'}</span>` : ''}
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderLineItem(item, stateId, grouped) {
+  const id = stateId || item.id;
+  const s = state.items[id] || { checked: false, qty: '', year: '' };
+  const isCustom = item.id.includes('-cus-');
+  const outerCls = grouped
+    ? `bg-slate-50 rounded-xl overflow-hidden border border-gray-100 ${s.checked ? 'ring-1 ring-orange-200' : ''}`
+    : `bg-white rounded-2xl mb-2.5 shadow-sm overflow-hidden ${s.checked ? 'ring-1 ring-orange-200' : ''}`;
+  if (item.noAction) return `
+    <div data-item-card class="${outerCls}">
+      <div class="px-4 py-3">
+        <div class="flex gap-3 items-center">
+          <button data-action="toggle-item" data-id="${id}"
+            class="flex-shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${s.checked ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'}">
+            ${s.checked ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
+          </button>
+          <p class="text-sm italic ${s.checked ? 'text-orange-500 font-medium' : 'text-gray-400'}">No action needed</p>
+        </div>
+      </div>
+    </div>`;
+  const total = calcItem(item, s);
+  const cost = getItemCost(item);
+  const costLabel = `$${cost.toLocaleString('en-US', { minimumFractionDigits: 2 })} / ${item.unit}`;
+  const meta = [item.notes, item.min ? `min $${item.min.toLocaleString()}` : null].filter(Boolean).join(' · ');
+  return `
+    <div data-item-card class="${outerCls}">
+      <div class="p-4">
+        <div class="flex gap-3 items-start">
+          <button data-action="toggle-item" data-id="${id}"
+            class="flex-shrink-0 mt-0.5 w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${s.checked ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'}">
+            ${s.checked ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>` : ''}
+          </button>
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between gap-2 items-start">
+              <p class="font-semibold text-sm leading-snug ${s.checked ? 'text-gray-900' : 'text-gray-400'}">${item.name}</p>
+              <p class="font-bold text-base flex-shrink-0 ${total > 0 ? 'text-orange-600' : 'text-gray-200'}">${total > 0 ? fmtTotal(total) : '—'}</p>
+            </div>
+            <div class="flex items-center gap-2 mt-0.5 flex-wrap">
+              ${isCustom
+                ? `<label class="text-xs text-gray-400">Cost</label>
+                   <input data-action="update-custom-cost" data-id="${id}" type="number" value="${cost}"
+                     min="0" step="0.01" inputmode="decimal"
+                     class="w-24 border border-gray-200 rounded-lg px-2 py-1 text-xs font-mono text-right focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent" />
+                   <span class="text-xs text-gray-400">/ ${item.unit}</span>`
+                : `<button data-action="edit-cost" data-id="${id}" class="text-xs text-orange-500 hover:text-orange-700 font-medium underline decoration-dotted">${costLabel}</button>`}
+              ${meta ? `<span class="text-xs text-gray-400">· ${meta}</span>` : ''}
+              ${isCustom ? `<button data-action="delete-item" data-id="${id}" class="text-xs text-red-400 ml-auto font-medium">Remove</button>` : ''}
+            </div>
+            ${s.checked ? `
+              <div class="mt-3 flex flex-wrap gap-3 items-center">
+                <div class="flex items-center gap-1">
+                  <span class="text-sm text-gray-500 mr-1">Qty</span>
+                  <button data-action="dec-qty" data-id="${id}" class="w-11 h-11 rounded-xl bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center active:bg-gray-200 select-none">−</button>
+                  <input data-action="update-qty" data-id="${id}" type="number" value="${s.qty}"
+                    min="0" step="any" inputmode="decimal" placeholder="0"
+                    class="border border-gray-200 rounded-xl px-2 py-2 w-24 text-right text-lg font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent" />
+                  <button data-action="inc-qty" data-id="${id}" class="w-11 h-11 rounded-xl bg-gray-100 text-gray-600 font-bold text-lg flex items-center justify-center active:bg-gray-200 select-none">+</button>
+                  <span class="text-sm text-gray-400 ml-1">${item.unit}</span>
+                </div>
+                ${item.hasYear ? `
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500">Year</span>
+                    <input data-action="update-year" data-id="${id}" type="number" value="${s.year || ''}"
+                      min="1970" max="${new Date().getFullYear()}" inputmode="numeric" placeholder="e.g. 2015"
+                      class="border border-gray-200 rounded-xl px-3 py-2 w-28 text-center text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent" />
+                  </div>` : ''}
+              </div>
+              ${item.hasYear ? `
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                  <p class="text-xs font-medium text-gray-500 mb-2">Photos</p>
+                  <div class="flex flex-wrap gap-2">
+                    ${(state.photos[id] || []).map((ph, pi) => `
+                      <div class="flex-shrink-0">
+                        <div class="relative">
+                          <img src="${ph.dataUrl}" class="w-24 h-24 rounded-xl object-cover border border-gray-100" />
+                          <button data-action="remove-photo" data-id="${id}" data-index="${pi}"
+                            class="absolute -top-2.5 -right-2.5 bg-red-500 text-white rounded-full w-9 h-9 text-base font-bold leading-none flex items-center justify-center shadow-md">×</button>
+                        </div>
+                        <input data-action="update-serial" data-id="${id}" data-index="${pi}" type="text" value="${(ph.serial || '').replace(/"/g,'&quot;')}"
+                          placeholder="Serial #" inputmode="text"
+                          class="mt-1 w-24 border border-gray-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                        ${renderDetections(ph)}
+                      </div>`).join('')}
+                    <button data-action="add-photo" data-id="${id}"
+                      class="w-24 h-24 flex-shrink-0 rounded-xl border-2 border-dashed border-orange-300 bg-orange-50 flex flex-col items-center justify-center text-orange-400 gap-1 text-xs font-medium">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 0 2-2l2-3h8l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      Add Photo
+                    </button>
+                  </div>
+                </div>` : ''}` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function buildSlots(items, instanceId) {
+  const itemToGroup = {};
+  for (const [gid, g] of Object.entries(GROUPS)) {
+    for (const id of g.ids) itemToGroup[id] = gid;
+  }
+  const slots = [];
+  const seenGroups = new Set();
+  for (const item of items) {
+    const gid = itemToGroup[item.id];
+    if (gid) {
+      if (!seenGroups.has(gid)) {
+        seenGroups.add(gid);
+        const groupItems = GROUPS[gid].ids.map(id => items.find(i => i.id === id)).filter(Boolean);
+        const entries = groupItems.map(it => ({ item: it, stateId: instanceId ? `${instanceId}:${it.id}` : it.id }));
+        slots.push({ type: 'group', gid, label: GROUPS[gid].label, entries });
+      }
+    } else {
+      slots.push({ type: 'standalone', item, stateId: instanceId ? `${instanceId}:${item.id}` : item.id });
+    }
+  }
+  return slots;
+}
+
+function renderGroup(slot) {
+  const { gid, label, entries } = slot;
+  const isExpanded = state.expandedGroups.includes(gid);
+  const checkedInGroup = entries.filter(e => state.items[e.stateId]?.checked).length;
+  const groupTotal = entries.reduce((sum, e) => sum + calcItem(e.item, state.items[e.stateId]), 0);
+  const chevron = isExpanded
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+  return `
+    <div data-group-card data-gid="${gid}" class="bg-white rounded-2xl mb-2.5 shadow-sm overflow-hidden ${checkedInGroup > 0 ? 'ring-1 ring-orange-200' : ''}">
+      <button data-action="toggle-group" data-gid="${gid}"
+        class="w-full flex items-center justify-between px-4 py-3.5 text-left">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="text-gray-400 flex-shrink-0">${chevron}</span>
+          <span class="font-semibold text-sm text-gray-800">${label}</span>
+          ${checkedInGroup > 0 ? `<span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium flex-shrink-0">${checkedInGroup} ✓</span>` : ''}
+        </div>
+        <span data-group-total class="font-bold text-base flex-shrink-0 ml-2 ${groupTotal > 0 ? 'text-orange-600' : 'text-gray-200'}">${groupTotal > 0 ? fmtTotal(groupTotal) : '—'}</span>
+      </button>
+      ${isExpanded ? `<div class="border-t border-gray-100 px-3 pb-3 pt-2 space-y-2">
+        ${entries.map(e => renderLineItem(e.item, e.stateId, true)).join('')}
+      </div>` : ''}
+    </div>`;
+}
+
+function renderInstanceSubTabs(cat) {
+  const rd = getRoomData(cat);
+  return `<div class="bg-white border-b border-gray-200 scroll-x flex items-stretch flex-shrink-0">
+    ${rd.instances.map((inst, i) => {
+      const active = i === rd.current;
+      const it = calcInstanceTotal(cat, inst);
+      const ic = getMultiItems(cat).filter(item => state.items[`${inst.id}:${item.id}`]?.checked).length;
+      return `<div class="flex-none flex items-center border-b-2 ${active ? 'border-orange-500 bg-orange-50' : 'border-transparent'}">
+        <button data-action="switch-instance" data-cat="${cat.id}" data-index="${i}"
+          class="pl-3 py-2.5 text-sm font-medium whitespace-nowrap ${active ? 'text-orange-700' : 'text-gray-500'}">
+          ${inst.name}${ic > 0 ? `<span class="ml-1 text-xs ${active ? 'text-orange-500' : 'text-gray-400'}">${it > 0 ? fmtTotal(it) : ic + ' ✓'}</span>` : ''}
+        </button>
+        <button data-action="edit-instance-name" data-cat="${cat.id}" data-index="${i}" class="px-3 py-3 ${active ? 'text-orange-400' : 'text-gray-300'}">${PENCIL}</button>
+        ${rd.instances.length > 1 ? `<button data-action="remove-instance" data-cat="${cat.id}" data-index="${i}" class="px-3 py-3 ${active ? 'text-red-300' : 'text-gray-200'}">${TRASH}</button>` : ''}
+      </div>`;
+    }).join('')}
+    <button data-action="add-instance" data-cat="${cat.id}" class="flex-none px-4 py-3 text-sm font-semibold text-orange-500 border-b-2 border-transparent whitespace-nowrap">+ Add</button>
+  </div>`;
+}
+
+function renderCategoryView() {
+  const cat = CATEGORIES[state.currentCat];
+  const items = getMultiItems(cat);
+  if (cat.type === 'multi') {
+    const rd = getRoomData(cat);
+    const inst = rd.instances[rd.current];
+    if (!inst) return `<div class="p-8 text-center text-gray-400"><p class="text-lg font-medium">No instances</p><p class="text-sm mt-1">Add a ${cat.name.toLowerCase()} to get started</p><button data-action="add-instance" data-cat="${cat.id}" class="mt-4 px-6 py-3 rounded-xl bg-orange-500 text-white font-semibold text-sm">+ Add ${cat.name}</button></div>`;
+    const ic = items.filter(item => state.items[`${inst.id}:${item.id}`]?.checked).length;
+    const slots = buildSlots(items, inst.id);
+    return `<div>
+      ${renderInstanceSubTabs(cat)}
+      <div class="px-4 pt-4">
+        <div class="flex justify-between items-center mb-3">
+          <p class="text-xs font-bold uppercase tracking-widest text-gray-400">${inst.name}</p>
+          <p class="text-xs text-gray-400">${ic} / ${items.length} selected</p>
+        </div>
+        ${slots.map(slot => slot.type === 'group' ? renderGroup(slot) : renderLineItem(slot.item, slot.stateId)).join('')}
+        ${renderCategoryNotes(inst.id, inst.name)}
+        <div class="px-0 pb-3 mt-3"><button data-action="add-item" data-cat="${cat.id}" class="inline-flex items-center justify-center gap-1.5 w-full py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm font-medium hover:border-orange-300 hover:text-orange-500 transition-colors">${PLUS}<span>Add Custom Item</span></button></div>
+          <button data-action="add-item" data-cat="${cat.id}" class="inline-flex items-center justify-center gap-1.5 w-full py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm font-medium hover:border-orange-300 hover:text-orange-500 transition-colors">${PLUS}<span>Add Custom Item</span></button>
+        </div>
+        <div class="h-2"></div>
+      </div>
+    </div>`;
+  }
+  const slots = buildSlots(items, null);
+  return `<div class="px-4 pt-4">
+    <div class="flex justify-between items-center mb-3">
+      <p class="text-xs font-bold uppercase tracking-widest text-gray-400">${cat.name}</p>
+      <p class="text-xs text-gray-400">${checkedCount(cat)} / ${items.length} selected</p>
+    </div>
+    ${slots.map(slot => slot.type === 'group' ? renderGroup(slot) : renderLineItem(slot.item, slot.stateId)).join('')}
+    ${renderCategoryNotes(cat.id, cat.name)}
+    <div class="px-4 pb-3">
+      <button data-action="add-item" data-cat="${cat.id}" class="inline-flex items-center justify-center gap-1.5 w-full py-3 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 text-sm font-medium hover:border-orange-300 hover:text-orange-500 transition-colors">${PLUS}<span>Add Custom Item</span></button>
+    </div>
+    <div class="h-2"></div>
+  </div>`;
+}
+
+function renderCategoryNotes(catId, catName) {
+  return `<div class="mt-4 px-4">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="text-xs font-bold uppercase tracking-widest text-gray-400">Notes</span>
+      <button data-action="dictate-note" data-id="${catId}" class="p-3 rounded-lg text-gray-400 hover:text-orange-500 active:bg-orange-50 transition-colors" title="Dictate note">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
+      <button data-action="clear-note" data-id="${catId}" class="ml-auto p-2.5 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Clear notes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <textarea data-action="update-note" data-id="${catId}" rows="2"
+      class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+      placeholder="Walkthrough notes for ${catName}...">${(state.notes[catId] || '').replace(/"/g, '&quot;')}</textarea>
+  </div>`;
+}
+
+function renderBottomNav() {
+  const isFirst = state.currentCat === 0;
+  const isLast  = state.currentCat === CATEGORIES.length - 1;
+  return `<div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-100 px-4 pt-3 safe-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+    <div class="flex gap-3 max-w-lg mx-auto">
+      <button data-action="prev-cat" ${isFirst ? 'disabled' : ''}
+        class="flex-1 py-3.5 rounded-2xl border-2 border-orange-500 text-orange-600 font-semibold text-sm ${isFirst ? 'opacity-25 cursor-not-allowed' : ''}">← Previous</button>
+      ${!isLast
+        ? `<button data-action="next-cat" class="flex-1 py-3.5 rounded-2xl bg-orange-500 text-white font-semibold text-sm">Next →</button>`
+        : `<button data-action="show-summary" class="flex-1 py-3.5 rounded-2xl bg-orange-500 text-white font-semibold text-sm">View Summary</button>`}
+    </div>
+  </div>`;
+}
+
+function renderMain() {
+  return `<div class="min-h-screen flex flex-col">
+    ${renderHeader()}
+    ${renderCategoryTabs()}
+    <div class="flex-1 scroll-y pb-28" id="scroll-area">${renderCategoryView()}</div>
+    ${renderBottomNav()}
+  </div>`;
+}
+
+function renderPhotoGallery() {
+  const entries = Object.entries(state.photos || {}).filter(([, arr]) => arr?.length > 0);
+  if (!entries.length) return '';
+  return `<div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+    <div class="px-4 py-3.5 bg-gray-900 text-white">
+      <p class="font-bold text-sm">Photo Gallery</p>
+      <p class="text-xs text-gray-400 mt-0.5">${entries.reduce((s, [,arr]) => s + arr.length, 0)} photo${entries.reduce((s, [,arr]) => s + arr.length, 0) !== 1 ? 's' : ''} captured</p>
+    </div>
+    <div class="p-4">
+      ${entries.map(([stateId, photos]) => {
+        const def = findItemDef(stateId);
+        const label = def?.name || stateId;
+        return `<div class="${stateId !== entries[0][0] ? 'mt-4 pt-4 border-t border-gray-100' : ''}">
+          <p class="text-sm font-semibold text-gray-700 mb-2">${label}</p>
+          <div class="flex flex-wrap gap-2">
+            ${photos.map(ph => `<div class="flex flex-col items-center gap-1"><img src="${ph.dataUrl}" class="w-24 h-24 rounded-xl object-cover border border-gray-100" />${ph.serial ? `<span class="text-xs font-mono text-gray-500">${ph.serial.replace(/</g,'&lt;')}</span>` : ''}${renderDetections(ph)}</div>`).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function renderProfitAnalyzer() {
+  const d = state.deal;
+  const totalRepairs = calcRunningTotal();
+  const purchase = parseFloat(d.purchasePrice) || 0;
+  const closing = parseFloat(d.closingCosts) || 0;
+  const holding = parseFloat(d.holdingCosts) || 0;
+  const arv = parseFloat(d.arv) || 0;
+  const totalCost = totalRepairs + purchase + closing + holding;
+  const profit = arv - totalCost;
+  const roi = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+  const color = profit > 0 ? (roi > 15 ? 'text-green-600' : 'text-yellow-600') : 'text-red-600';
+  const bgColor = profit > 0 ? (roi > 15 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200') : 'bg-red-50 border-red-200';
+  return `<div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+    <div class="px-4 py-3.5 bg-gray-900 text-white">
+      <p class="font-bold text-sm">Deal Analyzer</p>
+      <p class="text-xs text-gray-400 mt-0.5">Quick profit check — does this deal work?</p>
+    </div>
+    <div class="p-4 space-y-3">
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500 w-28 flex-shrink-0">After Repair Value</span>
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+          <input data-action="update-deal" data-field="arv" type="number" value="${d.arv}" min="0" placeholder="e.g. 250000" inputmode="numeric"
+            class="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-right text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500 w-28 flex-shrink-0">Purchase Price</span>
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+          <input data-action="update-deal" data-field="purchasePrice" type="number" value="${d.purchasePrice}" min="0" placeholder="e.g. 180000" inputmode="numeric"
+            class="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-right text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500 w-28 flex-shrink-0">Closing Costs</span>
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+          <input data-action="update-deal" data-field="closingCosts" type="number" value="${d.closingCosts}" min="0" placeholder="e.g. 8000" inputmode="numeric"
+            class="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-right text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-500 w-28 flex-shrink-0">Holding Costs</span>
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+          <input data-action="update-deal" data-field="holdingCosts" type="number" value="${d.holdingCosts}" min="0" placeholder="e.g. 5000" inputmode="numeric"
+            class="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-right text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400" />
+        </div>
+      </div>
+      ${purchase > 0 ? `
+        <div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
+          <div class="flex justify-between text-sm"><span class="text-gray-500">Repair Estimate</span><span class="font-mono font-medium">${fmtTotal(totalRepairs)}</span></div>
+          <div class="flex justify-between text-sm"><span class="text-gray-500">Purchase Price</span><span class="font-mono font-medium">${fmtTotal(purchase)}</span></div>
+          <div class="flex justify-between text-sm"><span class="text-gray-500">Closing + Holding</span><span class="font-mono font-medium">${fmtTotal(closing + holding)}</span></div>
+          <div class="flex justify-between text-sm font-semibold border-t border-gray-100 pt-2"><span>Total Cost Basis</span><span class="font-mono">${fmtTotal(totalCost)}</span></div>
+          <div class="flex justify-between text-sm ${color} font-bold pt-1"><span>Estimated Profit</span><span class="font-mono">${profit >= 0 ? '+' : ''}${fmtTotal(profit)}</span></div>
+          <div class="flex justify-between text-sm ${color}"><span>ROI</span><span class="font-mono">${roi.toFixed(1)}%</span></div>
+          <div class="mt-2 px-3 py-2 rounded-xl text-xs font-medium text-center ${bgColor} ${color} border">
+            ${profit > 0 ? (roi > 15 ? 'Strong deal — green light to proceed' : 'Decent margin — proceed with caution') : 'Loss — this deal needs work'}
+          </div>
+        </div>` : `<p class="text-xs text-gray-400 text-center py-3">Enter ARV and purchase price to see deal analysis</p>`}
+    </div>
+  </div>`;
+}
+
+function renderSummary() {
+  const total = calcRunningTotal();
+  const sections = CATEGORIES.flatMap(cat => {
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      return rd.instances.filter(inst => calcInstanceTotal(cat, inst) > 0).map(inst => ({
+        label: inst.name,
+        note: state.notes[inst.id] || '',
+        total: calcInstanceTotal(cat, inst),
+        rows: getMultiItems(cat)
+          .filter(item => { const s = state.items[`${inst.id}:${item.id}`]; return s?.checked && parseFloat(s.qty) > 0; })
+          .map(item => ({ item, s: state.items[`${inst.id}:${item.id}`], t: calcItem(item, state.items[`${inst.id}:${item.id}`]) }))
+      }));
+    }
+    const ct = calcCategoryTotal(cat);
+    if (!ct) return [];
+    return [{ label: cat.name, note: state.notes[cat.id] || '', total: ct, rows: getMultiItems(cat)
+      .filter(item => { const s = state.items[item.id]; return s?.checked && parseFloat(s.qty) > 0; })
+      .map(item => ({ item, s: state.items[item.id], t: calcItem(item, state.items[item.id]) })) }];
+  });
+
+  return `<div class="min-h-screen bg-slate-100">
+    <div class="bg-gray-900 text-white pt-safe">
+      <div class="px-4 pt-2 pb-1 flex justify-between items-center">
+        <button data-action="back-to-edit" class="text-orange-400 text-sm flex items-center gap-1">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>Back
+        </button>
+        <p class="text-xs text-orange-400 font-semibold tracking-wide flex items-center gap-1.5">
+          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAGCAYAAAGnR87/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAeGVYSWZNTQAqAAAACAAEARoABQAAAAEAAAA+ARsABQAAAAEAAABGASgAAwAAAAEAAgAAh2kABAAAAAEAAABOAAAAAAAAAEgAAAABAAAASAAAAAEAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAHKADAAQAAAABAAAABgAAAAB9Yk+2AAAACXBIWXMAAAsTAAALEwEAmpwYAAACmGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYvMS4wLyIKICAgICAgICAgICAgeG1sbnM6ZXhpZj0iaHR0cDovL25zLmFkb2JlLmNvbS9leGlmLzEuMC8iPgogICAgICAgICA8dGlmZjpYUmVzb2x1dGlvbj43MjwvdGlmZjpYUmVzb2x1dGlvbj4KICAgICAgICAgPHRpZmY6WVJlc29sdXRpb24+NzI8L3RpZmY6WVJlc29sdXRpb24+CiAgICAgICAgIDx0aWZmOlJlc29sdXRpb25Vbml0PjI8L3RpZmY6UmVzb2x1dGlvblVuaXQ+CiAgICAgICAgIDxleGlmOlBpeGVsWURpbWVuc2lvbj4xNTwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOlBpeGVsWERpbWVuc2lvbj42NDwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KOW6VWAAAAVBJREFUKBWt0U1LQkEUBuB3xtG0L0OLiApyWUKLFq3bhKsgEKldq4j+UOuWQlCr1v2AFkIfBoYrrQhLirISdW7ve8uNu6CBh7lz7jmeM1dgcJ2twfVjplpAstXF0vIJbhmMUPtXFDd55PuZg7vzARYYHKIRsqRKo92U89hnQsfAzmWPfZHBdXqhDgX0Tvc0TVVSfBHXBaTKG1jh4U/LmS52TdTGn7d9I13EHqvVReMk6YFOaZJeaZQ0gXXMOg+MX031wnEOGGyS7qVi/UiPKqQ76llfqWVKm5hwFrkgQMYZ3PG+F1mHK3OEKBNS9EkJUkftXzROYWfuWl3y4dNPA51jpO8h+q907rmYxVbE2Hlv0Ag8Msb62WYknDbOhB3S5DJMGkCN01SnKbqkGmkY0Q011BPN0BupVreu6yVqBSQ+PHJtj8exJEqZw7BAr/59fQOn6WPzHmHjDgAAAABJRU5ErkJggg==" class="h-4 w-auto inline-block brightness-0 invert" alt="" />
+          <span>SPARK ESTIMATOR</span>
+        </p>
+        <div class="flex items-center gap-1">
+          <button data-action="share-project" class="p-2 text-gray-400" title="Share">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
+          <button data-action="export-excel" class="p-2 text-gray-400" title="Export to Excel">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="px-4 pt-1 pb-6">
+        <p class="text-xs font-semibold tracking-widest uppercase text-orange-400">Total Estimate</p>
+        <p class="text-5xl font-bold mt-1 tabular-nums">${fmtTotal(total)}</p>
+        <p class="text-xs text-gray-400 mt-1.5">${state.currentProjectName}</p>
+      </div>
+    </div>
+    <div class="px-4 py-4 space-y-3">
+      ${state.deal.arv || state.deal.purchasePrice ? `<div class="mb-4">${renderProfitAnalyzer()}</div>` : ''}
+      ${sections.length === 0 ? `<div class="text-center py-12 text-gray-400"><p class="text-lg font-medium">No items selected</p></div>`
+        : sections.map(({ label, total: st, rows, note }) => `
+          <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div class="flex justify-between items-center px-4 py-3.5 bg-orange-50 border-b border-orange-100">
+              <p class="font-bold text-gray-900">${label}</p>
+              <p class="font-bold text-orange-600 text-lg">${fmtTotal(st)}</p>
+            </div>
+            ${rows.map(({ item, s, t }) => {
+              const yr = item.hasYear && s.year ? `<span class="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-medium">${s.year}</span>` : '';
+              return `<div class="flex justify-between items-center px-4 py-3 border-b border-gray-50 last:border-0">
+                <div class="flex-1 min-w-0 pr-3">
+                  <div class="flex items-center gap-1 flex-wrap"><p class="text-sm font-medium text-gray-800">${item.name}</p>${yr}</div>
+                  <p class="text-xs text-gray-400 mt-0.5">${s.qty} ${item.unit} × $${getItemCost(item).toLocaleString('en-US',{minimumFractionDigits:2})}</p>
+                </div>
+                <p class="text-sm font-bold text-gray-900 flex-shrink-0">${fmtTotal(t)}</p>
+              </div>`;
+            }).join('')}
+            ${note ? `<div class="px-4 py-3 bg-gray-50 border-t border-gray-100">
+              <p class="text-xs font-semibold tracking-widest uppercase text-gray-400 mb-1">Notes</p>
+              <p class="text-sm text-gray-600 italic">${note.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</p>
+            </div>` : ''}
+          </div>`).join('')}
+    </div>
+    <div class="px-4 pb-2 space-y-3">
+      ${renderPhotoGallery()}
+    </div>
+    <div class="px-4 pb-10 space-y-3 mt-2">
+      ${!state.deal.arv && !state.deal.purchasePrice ? `<div class="mb-4">${renderProfitAnalyzer()}</div>` : ''}
+      <button data-action="back-to-edit" class="w-full py-4 rounded-2xl bg-orange-500 text-white font-semibold">← Edit Estimate</button>
+      <button data-action="reset" class="w-full py-4 rounded-2xl border-2 border-red-200 text-red-500 font-semibold">Start New Estimate</button>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// PHOTO COMPRESSION
+// ============================================================
+function compressImage(file, maxDim = 1600, quality = 0.82) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(maxDim / img.width, maxDim / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ============================================================
+// AI DETECTION
+// ============================================================
+let _detectionModel = null;
+
+async function analyzeImage(dataUrl) {
+  const result = { objects: [], damageScore: 0, damageFlags: [] };
+  const img = new Image();
+  img.src = dataUrl;
+  await img.decode();
+
+  // Object detection with COCO-SSD
+  if (window.tf && window.cocoSsd) {
+    try {
+      if (!_detectionModel) _detectionModel = await cocoSsd.load({ base: 'mobilenet_v2' });
+      const predictions = await _detectionModel.detect(img);
+      result.objects = predictions
+        .filter(p => p.score > 0.25)
+        .map(p => ({ class: p.class, score: Math.round(p.score * 100) }));
+    } catch (_) {}
+  }
+
+  // Canvas-based damage anomaly detection
+  try {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const total = d.length / 4;
+    const step = Math.max(4, Math.round(Math.sqrt(total / 8000))) * 4;
+    let anomalies = 0, samples = 0;
+    for (let i = 0; i < d.length; i += step) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      samples++;
+      if (lum < 70) { anomalies++; continue; }
+      if (r < 100 && g < 100 && b < 70) { anomalies++; continue; }
+      if (g > r * 1.3 && g > b * 1.2 && lum < 160) { anomalies++; continue; }
+      if (r > g * 1.25 && g > b * 1.1 && lum < 170) { anomalies++; continue; }
+    }
+    const ratio = anomalies / samples;
+    result.damageScore = Math.round(Math.min(ratio * 100, 100));
+    if (result.damageScore > 12) result.damageFlags.push('⚠ Anomalous areas');
+    if (result.damageScore > 35) result.damageFlags.push('⚠ Inspect closely');
+    if (result.damageScore < 12) result.damageFlags.push('✓ Surface looks normal');
+  } catch (_) {}
+
+  return result;
+}
+
+function renderDetections(ph) {
+  if (!ph.detections) return '';
+  const parts = [];
+  if (ph.detections.objects.length) {
+    ph.detections.objects.slice(0, 3).forEach(o => {
+      const hue = o.score > 70 ? 'bg-green-100 text-green-700' : o.score > 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500';
+      parts.push(`<span class="text-[10px] px-1 rounded ${hue} leading-tight whitespace-nowrap">${o.class} ${o.score}%</span>`);
+    });
+  }
+  if (ph.detections.objects.length > 3) parts.push('<span class="text-[10px] text-gray-400">+'+ (ph.detections.objects.length - 3) +'</span>');
+  if (ph.detections.damageFlags.length) {
+    const dScore = ph.detections.damageScore;
+    const hue = dScore > 35 ? 'text-red-600' : dScore > 12 ? 'text-yellow-600' : 'text-green-600';
+    const icon = dScore > 12 ? '⚠' : '✓';
+    parts.push(`<span class="text-[10px] ${hue}">${icon} ${dScore}%</span>`);
+  }
+  if (!parts.length) return '';
+  return `<div class="mt-0.5 flex flex-wrap gap-0.5 max-w-24">${parts.join('')}</div>`;
+}
+
+// ============================================================
+// EXCEL / ZIP EXPORT
+// ============================================================
+async function exportPackage() {
+  if (typeof XLSX === 'undefined') { alert('Export library not loaded. Check your internet connection.'); return; }
+  if (typeof JSZip === 'undefined') { alert('ZIP library not loaded. Check your internet connection.'); return; }
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  let row = 0;
+  const merges = [];
+  const colWidths = [38, 16, 12, 10, 14];
+
+  const s = (font, fill, align, border) => ({
+    font: { name: 'Calibri', ...font },
+    fill: fill ? { patternType: 'solid', fgColor: { rgb: fill } } : undefined,
+    alignment: { wrapText: false, ...align },
+    border: border || undefined,
+  });
+
+  const cell = (r, c, v, style, fmt) => {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    ws[addr] = { v, t: typeof v === 'number' ? 'n' : 's', s: style };
+    if (fmt) ws[addr].z = fmt;
+  };
+  const merge = (r, c1, c2) => merges.push({ s: { r, c: c1 }, e: { r, c: c2 } });
+
+  cell(row, 0, 'SPARK HOMES — REPAIR ESTIMATE',
+    s({ bold: true, sz: 14, color: { rgb: 'FFFFFF' } }, '111827', { horizontal: 'center', vertical: 'center' }));
+  merge(row, 0, 4); row++;
+
+  cell(row, 0, `Property: ${state.currentProjectName}     Date: ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}`,
+    s({ sz: 10, color: { rgb: '6B7280' } }, 'F9FAFB', { horizontal: 'center' }));
+  merge(row, 0, 4); row++;
+  row++;
+
+  const thinBorder = (col) => ({ top: { style: 'thin', color: { rgb: col } }, bottom: { style: 'thin', color: { rgb: col } }, left: { style: 'thin', color: { rgb: col } }, right: { style: 'thin', color: { rgb: col } } });
+
+  const processSection = (label, rows) => {
+    if (!rows.length) return;
+    cell(row, 0, label.toUpperCase(), s({ bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, 'EA580C', { vertical: 'center' }));
+    for (let c = 1; c < 5; c++) cell(row, c, '', s({}, 'EA580C'));
+    merge(row, 0, 4); row++;
+
+    ['Repair Item','Unit','Unit Cost','Qty','Estimate'].forEach((h, c) =>
+      cell(row, c, h, s({ bold: true, sz: 10, color: { rgb: '374151' } }, 'FFF7ED', { horizontal: c >= 2 ? 'right' : 'left' }, thinBorder('FDBA74'))));
+    row++;
+
+    let secTotal = 0;
+    rows.forEach(({ item, s: st, t }) => {
+      const rowStyle = s({ sz: 10, color: { rgb: '374151' } }, 'FFFFFF', {}, thinBorder('F3F4F6'));
+      const yearStr = item.hasYear && st.year ? ` (${st.year})` : '';
+      cell(row, 0, item.name + yearStr, rowStyle);
+      cell(row, 1, item.unit, rowStyle);
+      cell(row, 2, getItemCost(item), s({ sz: 10 }, 'FFFFFF', { horizontal: 'right' }, thinBorder('F3F4F6')), '"$"#,##0.00');
+      cell(row, 3, parseFloat(st.qty) || 0, s({ sz: 10 }, 'FFFFFF', { horizontal: 'right' }, thinBorder('F3F4F6')));
+      cell(row, 4, t, s({ sz: 10 }, 'FFFFFF', { horizontal: 'right' }, thinBorder('F3F4F6')), '"$"#,##0');
+      secTotal += t; row++;
+    });
+
+    const totStyle = s({ bold: true, sz: 10, color: { rgb: 'C2410C' } }, 'FFF7ED', {}, thinBorder('FDBA74'));
+    cell(row, 0, `${label} Total`, totStyle); merge(row, 0, 3);
+    for (let c = 1; c < 4; c++) cell(row, c, '', totStyle);
+    cell(row, 4, secTotal, s({ bold: true, sz: 10, color: { rgb: 'C2410C' } }, 'FFF7ED', { horizontal: 'right' }, thinBorder('FDBA74')), '"$"#,##0');
+    row++;
+    row++;
+  };
+
+  CATEGORIES.forEach(cat => {
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      rd.instances.forEach(inst => {
+        const rows = getMultiItems(cat)
+          .filter(item => { const st = state.items[`${inst.id}:${item.id}`]; return st?.checked && parseFloat(st.qty) > 0; })
+          .map(item => ({ item, s: state.items[`${inst.id}:${item.id}`], t: calcItem(item, state.items[`${inst.id}:${item.id}`]) }));
+        processSection(inst.name, rows);
+      });
+    } else {
+      const rows = getMultiItems(cat)
+        .filter(item => { const st = state.items[item.id]; return st?.checked && parseFloat(st.qty) > 0; })
+        .map(item => ({ item, s: state.items[item.id], t: calcItem(item, state.items[item.id]) }));
+      processSection(cat.name, rows);
+    }
+  });
+
+  const grand = calcRunningTotal();
+  cell(row, 0, 'TOTAL ESTIMATE', s({ bold: true, sz: 13, color: { rgb: 'FFFFFF' } }, '111827', { horizontal: 'center', vertical: 'center' }));
+  merge(row, 0, 3);
+  for (let c = 1; c < 4; c++) cell(row, c, '', s({}, '111827'));
+  cell(row, 4, grand, s({ bold: true, sz: 13, color: { rgb: 'FFFFFF' } }, '111827', { horizontal: 'right', vertical: 'center' }), '"$"#,##0');
+
+  ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: row, c: 4 } });
+  ws['!cols'] = colWidths.map(w => ({ wch: w }));
+  ws['!merges'] = merges;
+  ws['!rows'] = Array.from({ length: row + 1 }, (_, i) => ({ hpt: i === 0 ? 24 : i === 1 ? 16 : 18 }));
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Estimate');
+  const baseName = `Repair-Estimate-${state.currentProjectName.replace(/[^a-z0-9]/gi,'_')}-${new Date().toISOString().split('T')[0]}`;
+
+  const photoEntries = Object.entries(state.photos || {}).filter(([, arr]) => arr?.length > 0);
+  if (!photoEntries.length) {
+    XLSX.writeFile(wb, `${baseName}.xlsx`);
+    return;
+  }
+
+  const zip = new JSZip();
+  zip.file(`${baseName}.xlsx`, XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
+  const folder = zip.folder('photos');
+  photoEntries.forEach(([stateId, photos]) => {
+    const def = findItemDef(stateId);
+    const prefix = (def?.name || stateId).replace(/[^a-z0-9]/gi, '_');
+    photos.forEach((ph, i) => {
+      const ext = (ph.dataUrl.split(';')[0].split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const tag = ph.serial ? `_${ph.serial.replace(/[^a-z0-9]/gi,'_')}` : '';
+      folder.file(`${prefix}${tag}_${i + 1}.${ext}`, ph.dataUrl.split(',')[1], { base64: true });
+    });
+  });
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${baseName}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+// INLINE COST EDITOR
+// ============================================================
+function promptCost(itemId, currentCost) {
+  const newCost = prompt(`Edit unit cost for this item:`, currentCost.toFixed(2));
+  if (newCost === null) return;
+  const val = parseFloat(newCost);
+  if (isNaN(val) || val < 0) { alert('Please enter a valid positive number.'); return; }
+  state.projectPriceOverrides[itemId] = val;
+  scheduleSave();
+  render();
+}
+
+// ============================================================
+// EVENTS
+// ============================================================
+function bindEvents() {}
+
+document.body.addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+
+  if (action === 'open-panel')       { openPanel(); return; }
+  if (action === 'open-settings')    { openSettings(); return; }
+  if (action === 'export-excel')     { exportPackage(); return; }
+
+  if (action === 'toggle-item') {
+    const id = btn.dataset.id;
+    const s = state.items[id];
+    if (!s) return;
+    s.checked = !s.checked;
+    if (!s.checked) s.qty = '';
+    saveCurrentState(); render();
+    if (s.checked) document.querySelector(`[data-action="update-qty"][data-id="${id}"]`)?.focus();
+    return;
+  }
+  if (action === 'switch-cat') {
+    state.currentCat = parseInt(btn.dataset.index);
+    render();
+    document.getElementById('scroll-area')?.scrollTo(0,0);
+    return;
+  }
+  if (action === 'prev-cat') {
+    state.currentCat = Math.max(0, state.currentCat - 1);
+    render(); document.getElementById('scroll-area')?.scrollTo(0,0); return;
+  }
+  if (action === 'next-cat') {
+    state.currentCat = Math.min(CATEGORIES.length - 1, state.currentCat + 1);
+    render(); document.getElementById('scroll-area')?.scrollTo(0,0); return;
+  }
+  if (action === 'toggle-group') {
+    const gid = btn.dataset.gid;
+    const scrollEl = document.getElementById('scroll-area');
+    const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
+    const idx = state.expandedGroups.indexOf(gid);
+    if (idx >= 0) state.expandedGroups.splice(idx, 1); else state.expandedGroups.push(gid);
+    render();
+    if (scrollEl) requestAnimationFrame(() => document.getElementById('scroll-area')?.scrollTo(0, scrollTop));
+    return;
+  }
+  if (action === 'switch-instance') {
+    const catId = btn.dataset.cat;
+    const idx = parseInt(btn.dataset.index);
+    const rd = state.rooms[catId];
+    if (rd) { rd.current = idx; render(); document.getElementById('scroll-area')?.scrollTo(0,0); }
+    return;
+  }
+  if (action === 'edit-instance-name') {
+    const catId = btn.dataset.cat;
+    const idx = parseInt(btn.dataset.index);
+    const cat = CATEGORIES.find(c => c.id === catId);
+    const rd = state.rooms[catId];
+    if (!rd || !cat) return;
+    openModal(`Rename ${cat.name}`, `e.g. Master ${cat.name}`, rd.instances[idx].name, name => {
+      rd.instances[idx].name = name;
+      saveCurrentState(); render();
+    });
+    return;
+  }
+  if (action === 'add-instance') {
+    const catId = btn.dataset.cat;
+    const cat = CATEGORIES.find(c => c.id === catId);
+    const rd = state.rooms[catId];
+    if (!rd || !cat) return;
+    const id = `${catId.slice(0,2)}${Date.now()}`;
+    const name = `${cat.name} ${rd.instances.length + 1}`;
+    rd.instances.push({ id, name });
+    getMultiItems(cat).forEach(item => { state.items[`${id}:${item.id}`] = blankItemState(); });
+    rd.current = rd.instances.length - 1;
+    saveCurrentState(); render(); return;
+  }
+  if (action === 'remove-instance') {
+    const catId = btn.dataset.cat;
+    const idx = parseInt(btn.dataset.index);
+    const cat = CATEGORIES.find(c => c.id === catId);
+    const rd = state.rooms[catId];
+    if (!rd || !cat) return;
+    const inst = rd.instances[idx];
+    if (!confirm(`Remove "${inst.name}"? All entries will be lost.`)) return;
+    getMultiItems(cat).forEach(item => { delete state.items[`${inst.id}:${item.id}`]; });
+    rd.instances.splice(idx, 1);
+    rd.current = Math.min(rd.current, rd.instances.length - 1);
+    saveCurrentState(); render(); return;
+  }
+  if (action === 'rename-project') {
+    openModal('Rename Project', 'e.g. 123 Main St', state.currentProjectName, name => {
+      state.currentProjectName = name;
+      saveCurrentState();
+      render();
+    });
+    return;
+  }
+  if (action === 'add-photo') {
+    const id = btn.dataset.id;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.style.cssText = 'position:fixed;top:-999px;opacity:0';
+    document.body.appendChild(input);
+    input.onchange = async () => {
+      document.body.removeChild(input);
+      if (!input.files || !input.files.length) return;
+      if (!state.photos[id]) state.photos[id] = [];
+      for (const file of Array.from(input.files)) {
+        const dataUrl = await compressImage(file);
+        const ph = { name: file.name, dataUrl, serial: '', detections: null };
+        state.photos[id].push(ph);
+        try {
+          if ('BarcodeDetector' in window) {
+            const detector = new BarcodeDetector();
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const codes = await detector.detect(img);
+            if (codes.length) ph.serial = codes[0].rawValue;
+          }
+        } catch (_) {}
+        ph.detections = await analyzeImage(dataUrl);
+      }
+      saveCurrentState(); render();
+    };
+    input.click();
+    return;
+  }
+  if (action === 'remove-photo') {
+    const id = btn.dataset.id;
+    const idx = parseInt(btn.dataset.index);
+    if (state.photos[id]) state.photos[id].splice(idx, 1);
+    scheduleSave(); render();
+    return;
+  }
+  if (action === 'show-summary')  { state.showSummary = true;  saveCurrentState(); render(); return; }
+  if (action === 'back-to-edit')  { state.showSummary = false; render(); return; }
+  if (action === 'reset') {
+    if (!confirm('Start a new estimate? All entries will be cleared.')) return;
+    initState();
+    saveCurrentState(); render(); return;
+  }
+  if (action === 'edit-cost') {
+    const id = btn.dataset.id;
+    const def = findItemDef(id);
+    if (!def) return;
+    promptCost(id, getItemCost(def));
+    return;
+  }
+  if (action === 'inc-qty') {
+    const id = btn.dataset.id;
+    const s = state.items[id];
+    if (!s) return;
+    const cur = parseFloat(s.qty) || 0;
+    s.qty = String(cur + 1);
+    updateTotalsInPlace(id);
+    scheduleSave();
+    const inp = document.querySelector(`[data-action="update-qty"][data-id="${id}"]`);
+    if (inp) inp.value = s.qty;
+    return;
+  }
+  if (action === 'dec-qty') {
+    const id = btn.dataset.id;
+    const s = state.items[id];
+    if (!s) return;
+    const cur = parseFloat(s.qty) || 0;
+    if (cur <= 0) return;
+    s.qty = String(cur - 1);
+    updateTotalsInPlace(id);
+    scheduleSave();
+    const inp = document.querySelector(`[data-action="update-qty"][data-id="${id}"]`);
+    if (inp) inp.value = s.qty;
+    return;
+  }
+  if (action === 'share-project') {
+    const total = calcRunningTotal();
+    const lines = [`Repair Estimate for ${state.currentProjectName}`];
+    CATEGORIES.forEach(cat => {
+      if (cat.type === 'multi') {
+        const rd = getRoomData(cat);
+        rd.instances.forEach(inst => {
+          const items = getMultiItems(cat).filter(item => { const s = state.items[`${inst.id}:${item.id}`]; return s?.checked && parseFloat(s.qty) > 0; });
+          if (!items.length) return;
+          lines.push(`\n${inst.name}:`);
+          items.forEach(item => { const s = state.items[`${inst.id}:${item.id}`]; const t = calcItem(item, s); lines.push(`  ${item.name}: ${s.qty} × $${getItemCost(item).toFixed(2)} = ${fmtTotal(t)}`); });
+        });
+      } else {
+        const items = getMultiItems(cat).filter(item => { const s = state.items[item.id]; return s?.checked && parseFloat(s.qty) > 0; });
+        if (!items.length) return;
+        lines.push(`\n${cat.name}:`);
+        items.forEach(item => { const s = state.items[item.id]; const t = calcItem(item, s); lines.push(`  ${item.name}: ${s.qty} × $${getItemCost(item).toFixed(2)} = ${fmtTotal(t)}`); });
+      }
+    });
+    lines.push(`\nTotal Estimate: ${fmtTotal(total)}`);
+    const msg = lines.join('\n');
+    if (navigator.share) {
+      navigator.share({ title: 'Repair Estimate', text: msg }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(msg).then(() => alert('Estimate summary copied to clipboard')).catch(() => alert(msg));
+    }
+    return;
+  }
+  if (action === 'clear-note') {
+    const id = btn.dataset.id;
+    if (state.notes[id]) { state.notes[id] = ''; scheduleSave(); render(); }
+    return;
+  }
+  if (action === 'dictate-note') {
+    const id = btn.dataset.id;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert('Speech recognition not supported in this browser. Try Chrome on Android or desktop.'); return; }
+    if (state._dictating) return;
+    state._dictating = true;
+    const r = new SR();
+    r.lang = 'en-US';
+    r.interimResults = false;
+    r.continuous = false;
+    btn.classList.add('text-orange-500');
+    const dot = document.createElement('span');
+    dot.className = 'text-orange-500 text-sm font-bold tracking-widest animate-pulse';
+    dot.textContent = '...';
+    btn.insertAdjacentElement('afterend', dot);
+    r.onresult = e => {
+      const t = e.results[0][0].transcript;
+      state.notes[id] = (state.notes[id] || '') + (state.notes[id] ? ' ' : '') + t;
+      scheduleSave();
+      const ta = document.querySelector(`[data-action="update-note"][data-id="${id}"]`);
+      if (ta) ta.value = state.notes[id];
+    };
+    const cleanup = () => { state._dictating = false; btn.classList.remove('text-orange-500'); if (dot.parentNode) dot.remove(); };
+    r.onend = cleanup;
+    r.onerror = cleanup;
+    r.start();
+    return;
+  }
+  if (action === 'add-item') {
+    const catId = btn.dataset.cat;
+    const name = prompt('Item name:');
+    if (!name || !name.trim()) return;
+    const costStr = prompt('Unit cost ($):');
+    const cost = parseFloat(costStr);
+    if (isNaN(cost) || cost < 0) { alert('Invalid cost.'); return; }
+    const unit = prompt('Unit (e.g. ea., sqft, LF):') || 'ea.';
+    const cat = CATEGORIES.find(c => c.id === catId);
+    if (!cat) return;
+    if (!state.customItems[catId]) state.customItems[catId] = [];
+    const newId = genItemId(catId);
+    const newItem = { id: newId, name: name.trim(), cost, unit };
+    state.customItems[catId].push(newItem);
+    if (cat.type === 'multi') {
+      const rd = getRoomData(cat);
+      rd.instances.forEach(inst => { state.items[`${inst.id}:${newId}`] = blankItemState(); });
+    } else {
+      state.items[newId] = blankItemState();
+    }
+    saveCurrentState(); render(); return;
+  }
+  if (action === 'delete-item') {
+    const id = btn.dataset.id;
+    if (!confirm('Remove this custom item?')) return;
+    // Find which category this custom item belongs to
+    for (const cat of CATEGORIES) {
+      const custom = state.customItems[cat.id];
+      if (!custom) continue;
+      const idx = custom.findIndex(i => i.id === id);
+      if (idx >= 0) {
+        custom.splice(idx, 1);
+        if (cat.type === 'multi') {
+          const rd = getRoomData(cat);
+          rd.instances.forEach(inst => { delete state.items[`${inst.id}:${id}`]; });
+        } else {
+          delete state.items[id];
+        }
+        break;
+      }
+    }
+    saveCurrentState(); render(); return;
+  }
+});
+
+document.body.addEventListener('input', e => {
+  const qtyEl = e.target.closest('[data-action="update-qty"]');
+  if (qtyEl) {
+    state.items[qtyEl.dataset.id].qty = qtyEl.value;
+    updateTotalsInPlace(qtyEl.dataset.id);
+    scheduleSave(); return;
+  }
+  const yrEl = e.target.closest('[data-action="update-year"]');
+  if (yrEl) { state.items[yrEl.dataset.id].year = yrEl.value; scheduleSave(); return; }
+  const noteEl = e.target.closest('[data-action="update-note"]');
+  if (noteEl) { state.notes[noteEl.dataset.id] = noteEl.value; scheduleSave(); return; }
+  const serialEl = e.target.closest('[data-action="update-serial"]');
+  if (serialEl) {
+    const id = serialEl.dataset.id;
+    const idx = parseInt(serialEl.dataset.index);
+    if (state.photos[id] && state.photos[id][idx]) { state.photos[id][idx].serial = serialEl.value; scheduleSave(); }
+    return;
+  }
+  const costEl = e.target.closest('[data-action="update-custom-cost"]');
+  if (costEl) {
+    const id = costEl.dataset.id;
+    const val = parseFloat(costEl.value);
+    if (!isNaN(val) && val >= 0) {
+      const parts = id.split(':');
+      const rawId = parts.length > 1 ? parts[1] : id;
+      const catId = rawId.split('-')[0];
+      const custom = (state.customItems[catId] || []).find(i => i.id === rawId);
+      if (custom) { custom.cost = val; scheduleSave(); }
+    }
+    return;
+  }
+  const dealEl = e.target.closest('[data-action="update-deal"]');
+  if (dealEl) {
+    state.deal[dealEl.dataset.field] = dealEl.value;
+    scheduleSave();
+    // Re-render summary in place
+    if (state.showSummary) render();
+    return;
+  }
+});
+
+document.getElementById('close-panel-btn').addEventListener('click', closePanel);
+document.getElementById('panel-overlay').addEventListener('click', closePanel);
+document.getElementById('new-project-btn').addEventListener('click', () => {
+  closePanel();
+  openModal('New Project', 'e.g. 123 Main St', '', name => {
+    saveCurrentState();
+    state.currentProjectId = `proj_${Date.now()}`;
+    state.currentProjectName = name;
+    state.showSummary = false;
+    state.deal = { arv: '', purchasePrice: '', closingCosts: '', holdingCosts: '' };
+    initState();
+    saveCurrentState();
+    render();
+  });
+});
+
+// Settings modal
+function openSettings() {
+  refreshPriceStatus();
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.add('hidden');
+}
+function refreshPriceStatus() {
+  const count = Object.keys(state.priceOverrides).length;
+  const el = document.getElementById('price-status');
+  const resetBtn = document.getElementById('reset-prices-btn');
+  if (count > 0) {
+    el.textContent = `Custom prices active — ${count} item${count !== 1 ? 's' : ''} overridden`;
+    el.className = 'mb-4 px-4 py-3 rounded-xl text-sm bg-orange-50 text-orange-700';
+    resetBtn.classList.remove('hidden');
+  } else {
+    el.textContent = 'Using default prices';
+    el.className = 'mb-4 px-4 py-3 rounded-xl text-sm bg-gray-50 text-gray-500';
+    resetBtn.classList.add('hidden');
+  }
+}
+
+document.getElementById('settings-bg').addEventListener('click', closeSettings);
+document.getElementById('settings-close').addEventListener('click', closeSettings);
+
+document.getElementById('price-csv-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const rows = parseCSV(ev.target.result);
+    let updated = 0;
+    rows.forEach(row => {
+      const id = row.id?.trim();
+      const cost = parseFloat(row.cost);
+      if (id && !isNaN(cost) && cost >= 0) { state.priceOverrides[id] = cost; updated++; }
+    });
+    savePriceOverrides();
+    refreshPriceStatus();
+    render();
+    alert(`${updated} price${updated !== 1 ? 's' : ''} updated successfully.`);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('reset-prices-btn').addEventListener('click', () => {
+  if (!confirm('Reset all prices to defaults?')) return;
+  state.priceOverrides = {};
+  savePriceOverrides();
+  refreshPriceStatus();
+  render();
+});
+
+// Modal buttons
+document.getElementById('modal-confirm').addEventListener('click', confirmModal);
+document.getElementById('modal-cancel').addEventListener('click', closeModal);
+document.getElementById('modal-bg').addEventListener('click', closeModal);
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmModal();
+  if (e.key === 'Escape') closeModal();
+});
+
+// ============================================================
+// PARTIAL UPDATE
+// ============================================================
+function updateTotalsInPlace(changedId) {
+  const itemDef = findItemDef(changedId);
+  if (!itemDef) return;
+  const s = state.items[changedId];
+  const t = calcItem(itemDef, s);
+
+  const toggleBtn = document.querySelector(`[data-action="toggle-item"][data-id="${changedId}"]`);
+  const card = toggleBtn?.closest('[data-item-card]');
+  if (card) {
+    const el = card.querySelector('.font-bold.text-base.flex-shrink-0');
+    if (el) { el.textContent = t > 0 ? fmtTotal(t) : '—'; el.className = `font-bold text-base flex-shrink-0 ${t > 0 ? 'text-orange-600' : 'text-gray-200'}`; }
+  }
+  const groupCard = toggleBtn?.closest('[data-group-card]');
+  if (groupCard) {
+    const gid = groupCard.dataset.gid;
+    const group = GROUPS[gid];
+    if (group) {
+      const isMulti = changedId.includes(':');
+      const instId = isMulti ? changedId.split(':')[0] : null;
+      const groupTotal = group.ids.reduce((sum, id) => {
+        const sid = instId ? `${instId}:${id}` : id;
+        const def = findItemDef(sid);
+        return sum + (def ? calcItem(def, state.items[sid]) : 0);
+      }, 0);
+      const totalEl = groupCard.querySelector('[data-group-total]');
+      if (totalEl) {
+        totalEl.textContent = groupTotal > 0 ? fmtTotal(groupTotal) : '—';
+        totalEl.className = `font-bold text-base flex-shrink-0 ml-2 ${groupTotal > 0 ? 'text-orange-600' : 'text-gray-200'}`;
+      }
+    }
+  }
+
+  const hdr = document.querySelector('.text-5xl.font-bold');
+  if (hdr) hdr.textContent = fmtTotal(calcRunningTotal());
+
+  const cat = CATEGORIES[state.currentCat];
+  const ct = calcCategoryTotal(cat);
+  const tabSpan = document.querySelector(`[data-action="switch-cat"][data-index="${state.currentCat}"] span`);
+  if (tabSpan) tabSpan.textContent = ct > 0 ? fmtTotal(ct) : '';
+
+  const secEl = document.querySelector('.text-xs.text-gray-400.mt-1\\.5.truncate');
+  if (secEl) {
+    const n = CATEGORIES.filter(c => calcCategoryTotal(c) > 0).length;
+    secEl.textContent = `${state.currentProjectName} · ${n} active section${n !== 1 ? 's' : ''}`;
+  }
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+(function boot() {
+  state.priceOverrides = loadPriceOverrides();
+  const projects = loadProjects();
+  if (projects.length > 0) {
+    loadProjectIntoState(projects[0]);
+  } else {
+    state.currentProjectId = `proj_${Date.now()}`;
+    state.currentProjectName = 'New Estimate';
+    initState();
+    saveCurrentState();
+  }
+  render();
+  // Swipe gesture to navigate categories
+  let _swipeX = 0, _swipeY = 0;
+  document.addEventListener('touchstart', e => {
+    const t = e.changedTouches[0];
+    _swipeX = t.screenX; _swipeY = t.screenY;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (state.showSummary) return;
+    const t = e.changedTouches[0];
+    const dx = t.screenX - _swipeX, dy = t.screenY - _swipeY;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2) {
+      e.preventDefault();
+      if (dx < 0 && state.currentCat < CATEGORIES.length - 1) {
+        state.currentCat++;
+        render();
+        document.getElementById('scroll-area')?.scrollTo(0,0);
+      } else if (dx > 0 && state.currentCat > 0) {
+        state.currentCat--;
+        render();
+        document.getElementById('scroll-area')?.scrollTo(0,0);
+      }
+    }
+  }, { passive: false });
+  window.addEventListener('visibilitychange', () => { if (document.hidden) saveCurrentState(); });
+  window.addEventListener('pagehide', saveCurrentState);
+  window.addEventListener('freeze', saveCurrentState);
+})();
+</script>
+</body>
+</html>
