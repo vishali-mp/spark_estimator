@@ -1768,8 +1768,8 @@ document.body.addEventListener('input', e => {
   if (dealEl) {
     state.deal[dealEl.dataset.field] = dealEl.value;
     scheduleSave();
-    // Re-render summary in place
-    if (state.showSummary) render();
+    // Re-render summary in place without losing scroll position
+    if (state.showSummary) { const sy = window.scrollY; render(); requestAnimationFrame(() => window.scrollTo(0, sy)); }
     return;
   }
 });
