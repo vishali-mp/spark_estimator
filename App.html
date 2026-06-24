@@ -1065,7 +1065,7 @@ function renderPhotoGallery() {
   </div>`;
 }
 
-function renderProfitAnalyzer() {
+function renderDealResults() {
   const d = state.deal;
   const totalRepairs = calcRunningTotal();
   const purchase = parseFloat(d.purchasePrice) || 0;
@@ -1077,6 +1077,24 @@ function renderProfitAnalyzer() {
   const roi = totalCost > 0 ? (profit / totalCost) * 100 : 0;
   const color = profit > 0 ? (roi > 15 ? 'text-green-600' : 'text-yellow-600') : 'text-red-600';
   const bgColor = profit > 0 ? (roi > 15 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200') : 'bg-red-50 border-red-200';
+  if (purchase > 0) {
+    return `<div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
+      <div class="flex justify-between text-sm"><span class="text-gray-500">Repair Estimate</span><span class="font-mono font-medium">${fmtTotal(totalRepairs)}</span></div>
+      <div class="flex justify-between text-sm"><span class="text-gray-500">Purchase Price</span><span class="font-mono font-medium">${fmtTotal(purchase)}</span></div>
+      <div class="flex justify-between text-sm"><span class="text-gray-500">Closing + Holding</span><span class="font-mono font-medium">${fmtTotal(closing + holding)}</span></div>
+      <div class="flex justify-between text-sm font-semibold border-t border-gray-100 pt-2"><span>Total Cost Basis</span><span class="font-mono">${fmtTotal(totalCost)}</span></div>
+      <div class="flex justify-between text-sm ${color} font-bold pt-1"><span>Estimated Profit</span><span class="font-mono">${profit >= 0 ? '+' : ''}${fmtTotal(profit)}</span></div>
+      <div class="flex justify-between text-sm ${color}"><span>ROI</span><span class="font-mono">${roi.toFixed(1)}%</span></div>
+      <div class="mt-2 px-3 py-2 rounded-xl text-xs font-medium text-center ${bgColor} ${color} border">
+        ${profit > 0 ? (roi > 15 ? 'Strong deal — green light to proceed' : 'Decent margin — proceed with caution') : 'Loss — this deal needs work'}
+      </div>
+    </div>`;
+  }
+  return '<p class="text-xs text-gray-400 text-center py-3">Enter ARV and purchase price to see deal analysis</p>';
+}
+
+function renderProfitAnalyzer() {
+  const d = state.deal;
   return `<div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
     <div class="px-4 py-3.5 bg-gray-900 text-white">
       <p class="font-bold text-sm">Deal Analyzer</p>
@@ -1115,18 +1133,7 @@ function renderProfitAnalyzer() {
             class="w-full border border-gray-200 rounded-xl pl-7 pr-3 py-2.5 text-right text-base font-mono focus:outline-none focus:ring-2 focus:ring-orange-400" />
         </div>
       </div>
-      ${purchase > 0 ? `
-        <div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
-          <div class="flex justify-between text-sm"><span class="text-gray-500">Repair Estimate</span><span class="font-mono font-medium">${fmtTotal(totalRepairs)}</span></div>
-          <div class="flex justify-between text-sm"><span class="text-gray-500">Purchase Price</span><span class="font-mono font-medium">${fmtTotal(purchase)}</span></div>
-          <div class="flex justify-between text-sm"><span class="text-gray-500">Closing + Holding</span><span class="font-mono font-medium">${fmtTotal(closing + holding)}</span></div>
-          <div class="flex justify-between text-sm font-semibold border-t border-gray-100 pt-2"><span>Total Cost Basis</span><span class="font-mono">${fmtTotal(totalCost)}</span></div>
-          <div class="flex justify-between text-sm ${color} font-bold pt-1"><span>Estimated Profit</span><span class="font-mono">${profit >= 0 ? '+' : ''}${fmtTotal(profit)}</span></div>
-          <div class="flex justify-between text-sm ${color}"><span>ROI</span><span class="font-mono">${roi.toFixed(1)}%</span></div>
-          <div class="mt-2 px-3 py-2 rounded-xl text-xs font-medium text-center ${bgColor} ${color} border">
-            ${profit > 0 ? (roi > 15 ? 'Strong deal — green light to proceed' : 'Decent margin — proceed with caution') : 'Loss — this deal needs work'}
-          </div>
-        </div>` : `<p class="text-xs text-gray-400 text-center py-3">Enter ARV and purchase price to see deal analysis</p>`}
+      <div id="deal-results">${renderDealResults()}</div>
     </div>
   </div>`;
 }
@@ -1768,8 +1775,11 @@ document.body.addEventListener('input', e => {
   if (dealEl) {
     state.deal[dealEl.dataset.field] = dealEl.value;
     scheduleSave();
-    // Re-render summary in place without losing scroll position
-    if (state.showSummary) { const sy = window.scrollY; render(); requestAnimationFrame(() => window.scrollTo(0, sy)); }
+    // Update just the deal results in-place (don't re-render whole DOM — kills focus)
+    if (state.showSummary) {
+      const el = document.getElementById('deal-results');
+      if (el) el.outerHTML = `<div id="deal-results">${renderDealResults()}</div>`;
+    }
     return;
   }
 });
