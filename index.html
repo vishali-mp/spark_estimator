@@ -1263,26 +1263,22 @@ function renderSummary() {
 
   return `<div class="min-h-screen bg-slate-100">
     <div class="bg-gray-900 text-white pt-safe">
-      <div class="px-4 pt-2 pb-4 flex justify-between items-center">
-        <div class="flex items-center gap-2 min-w-0">
-          <button data-action="back-to-edit" class="text-orange-400 text-sm flex items-center gap-1 flex-shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>Back
+      <div class="flex items-center justify-between w-full px-4 pt-2 pb-4">
+        <div class="flex items-center flex-1 min-w-0 pr-2">
+          <button data-action="back-to-edit" class="flex items-center text-orange-400 shrink-0 mr-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            <span class="text-sm">Back</span>
           </button>
-          <img src="logo.png" class="h-7 w-auto flex-shrink-0" alt="Spark Group" />
-          <p class="text-xs text-orange-400 font-semibold tracking-wide flex-shrink-0">SPARK ESTIMATOR</p>
+          <p class="truncate font-semibold text-sm">${state.currentProjectName}</p>
         </div>
-        <p class="text-lg font-bold text-white truncate mx-2">${state.currentProjectName}</p>
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <p class="text-xs text-gray-400 font-medium">Total Estimate</p>
-          <p class="text-2xl font-bold tabular-nums text-white">${fmtTotal(total)}</p>
+        <div class="flex items-center shrink-0 space-x-3">
+          <p class="text-xs text-gray-400 font-medium hidden sm:block mr-1">Total Estimate</p>
+          <span class="text-xl font-bold tabular-nums md:text-2xl">${fmtTotal(total)}</span>
           <button data-action="share-project" class="p-2 text-gray-400" title="Share">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           </button>
           <button data-action="export-excel" class="p-2 text-gray-400" title="Export to Excel">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
-            </svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
           </button>
           <button data-action="export-pdf" class="p-2 text-gray-400" title="Download PDF">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg>
