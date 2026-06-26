@@ -23,7 +23,7 @@ python3 -m http.server 8080
 | **Framework** | None — vanilla JS |
 | **Styling** | Tailwind CSS (CDN, runtime) |
 | **Libraries** | `xlsx-js-style` (Excel export), `JSZip` (photo bundling), `@tensorflow/tfjs` + `@tensorflow-models/coco-ssd` (AI damage detection) |
-| **Structure** | Single file: HTML + CSS + JS (~1950 lines) |
+| **Structure** | Single file: HTML + CSS + JS (~2150 lines) |
 | **State** | Global `state` object, full `innerHTML` re-render via `render()` |
 | **Events** | Delegation on `document.body` via `data-action` attributes |
 | **Persistence** | `localStorage` — auto-save on 800ms debounce + page lifecycle events |
@@ -54,7 +54,7 @@ python3 -m http.server 8080
 - **Quantity controls** — `−` and `+` buttons, manual numeric input; totals update in-place (no full re-render)
 - **Default quantity** — items with `defaultQty` pre-fill when checked
 - **Minimum enforcement** — items with `min` property floor the total (e.g., `ig-14` min $500)
-- **No-action items** — placeholder "No action needed" items at $0, inside group cards
+- **No-action items** — "No action needed" items at $0 inside each group; checking one disables the other items in that group and marks the group complete for progress
 - **Group cards** — related items grouped under labeled cards; collapse/expand with group total + check count badge; expansion state preserved
 - **Inline totals** — each checked item shows computed cost (qty × unit cost, floored at min)
 - **Metadata** — shows unit, notes, and minimum cost hints below item name
@@ -201,13 +201,13 @@ Photos stored as base64 data URLs (compressed to 1600px / 82% JPEG quality). If 
 
 | ID | Name | Type | Items | Default Instances |
 |----|------|------|-------|-------------------|
-| `interior-general` | Interior / General | single | 28 items + 4 no-action | — |
+| `interior-general` | Interior / General | single | 28 items + 5 no-action | — |
 | `kitchen` | Kitchen | single | 17 items + 3 no-action | — |
-| `bathroom` | Bathroom | **multi** | 16 items + 3 no-action | Bathroom 1, Bathroom 2 |
-| `bedroom` | Bedroom | **multi** | 12 items + 3 no-action | None (user adds) |
-| `living-common` | Living / Common | **multi** | 11 items + 3 no-action | Living Room |
-| `systems` | Systems & Structure | single | 24 items + 4 no-action | — |
-| `exterior` | Exterior | single | 23 items + 5 no-action | — |
+| `bathroom` | Bathroom | **multi** | 16 items + 4 no-action | Bathroom 1, Bathroom 2 |
+| `bedroom` | Bedroom | **multi** | 12 items + 4 no-action | None (user adds) |
+| `living-common` | Living / Common | **multi** | 11 items + 4 no-action | Living Room |
+| `systems` | Systems & Structure | single | 24 items + 5 no-action | — |
+| `exterior` | Exterior | single | 23 items + 6 no-action | — |
 
 **Multi-instance** categories support dynamic add/remove/rename of room instances. Item state uses composite keys (`b1:ba-01`, `bed1:br-03`, `lc1:lc-09`).
 
@@ -270,6 +270,7 @@ All user interactions use the `data-action` attribute pattern:
 | `open-panel` | Open side panel |
 | `open-settings` | Open settings modal |
 | `export-excel` | Trigger Excel/ZIP export |
+| `export-pdf` | Print-to-PDF via `window.print()` |
 | `toggle-item` | Check/uncheck a line item |
 | `switch-cat` | Switch category tab |
 | `prev-cat` / `next-cat` | Navigate categories |
