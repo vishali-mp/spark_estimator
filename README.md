@@ -86,7 +86,7 @@ Three-tier priority: **project override** → **global CSV override** → **defa
 
 ### Notes & Voice Dictation
 
-- **Per-category/instance notes** — textarea at the bottom of each category view
+- **Per-category/instance notes** — textarea at the bottom ofa each category view
 - **Clear button** — `×` to clear note text
 - **Speech-to-text** — microphone button triggers Web Speech API; transcribed text appended to the note
 - **Dictation feedback** — orange highlight on mic + animated pulse dots while recording
