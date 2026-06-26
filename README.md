@@ -33,6 +33,7 @@ python3 -m http.server 8080
 ### Project Management
 
 - **Side panel** — slide-out project list with project name, save date, active indicator, rename, and delete
+- **Panel search** — filter projects by name or date via inline search bar inside the panel
 - **New Project** — create a new blank estimate with a custom name
 - **Switch projects** — tap any project in the panel to load it
 - **Rename** — pencil button in header opens a rename modal
@@ -133,12 +134,14 @@ In the summary view: inputs for ARV (After Repair Value), Purchase Price, Closin
 - **Notes** — per-category notes displayed below items
 - **Photo gallery** — all captured photos with serial numbers and AI results
 - **Empty state** — "No items selected" placeholder when nothing is checked
+- **Summary as a tab** — accessible as the last tab in the category bar for direct one-tap access without tabbing through every category
 - **Back to Edit** — returns to the main editing view
 
 ### Export
 
 - **Excel (.xlsx)** — styled workbook with dark headers, orange section headers, item rows, category totals, and grand total
 - **ZIP bundle** — if photos exist, creates `.zip` containing `.xlsx` + `photos/` folder with serial-numbered image files
+- **PDF** — print-to-PDF via `window.print()` with branded header, strips buttons/inputs via `@media print` CSS
 - **Share** — plain-text estimate breakdown via Web Share API; clipboard fallback on unsupported devices
 - **File naming** — `Repair-Estimate-{projectName}-{date}.xlsx` or `.zip`
 
