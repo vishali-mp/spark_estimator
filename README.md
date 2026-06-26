@@ -65,6 +65,15 @@ python3 -m http.server 8080
 - **Add / Remove / Rename** — dynamic instance management from the sub-tab bar; remove requires confirmation, minimum 1 instance enforced
 - **Composite state keys** — items identified as `b1:ba-01`, `bed1:br-03`, `lc1:lc-09`
 
+### Search
+
+- **Always-visible search bar** — inline input between the header and category tabs; no toggle needed
+- **Live filtering** — results update in real-time as you type via partial DOM swap (no focus loss)
+- **Global scope** — searches across all 7 categories, including custom items (excludes no-action placeholders)
+- **Results view** — hides category tabs during search; results grouped by category in styled cards
+- **Instant navigation** — tapping a result switches to the correct category tab (scrolled into view), collapses all other groups, expands only the matching item's group, clears the query, and scrolls the item card into view
+- **✕ clear** — resets the query and restores the normal category view
+
 ### Pricing & Cost Overrides
 
 Three-tier priority: **project override** → **global CSV override** → **default price**
@@ -165,12 +174,16 @@ In the summary view: inputs for ARV (After Repair Value), Purchase Price, Closin
 
 ### Partial DOM Updates
 
-To avoid full re-renders on frequent interactions, `updateTotalsInPlace()` updates only:
+Two mechanisms avoid full re-renders on frequent interactions:
+
+**`updateTotalsInPlace()`** — updates only:
 - The affected item's total
 - The parent group's total
 - The header's running total
 - The current category tab's badge
 - The active section count label
+
+**Search live filter** — typing in the search bar swaps only the `#scroll-area` innerHTML (results or category view) and toggles the tabs' visibility, preserving input focus during continuous typing.
 
 ## Data / Persistence
 
@@ -248,6 +261,9 @@ All user interactions use the `data-action` attribute pattern:
 
 | data-action | Purpose |
 |-------------|---------|
+| `search-input` | Live filter search results |
+| `search-clear` | Clear search query and restore category view |
+| `search-select` | Navigate to item: switch tab, expand group, scroll to card |
 | `open-panel` | Open side panel |
 | `open-settings` | Open settings modal |
 | `export-excel` | Trigger Excel/ZIP export |
