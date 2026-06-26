@@ -32,16 +32,29 @@
     #side-panel { transition: transform 0.28s cubic-bezier(.4,0,.2,1); }
     .cost-input { min-width: 80px; }
     button:active, [data-action]:active, label:active { opacity: 0.7; }
+    @media print {
+      body { background: #fff !important; }
+      button, [data-action] { display: none !important; }
+      input { border: none !important; background: transparent !important; padding: 0 !important; }
+      .bg-gray-900 { background: #1e293b !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .bg-orange-500 { background: #f97316 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .shadow-sm, .shadow { box-shadow: none !important; }
+    }
   </style>
 </head>
 <body class="bg-slate-100">
 
 <div id="panel-overlay" class="fixed inset-0 bg-black/50 z-40 hidden"></div>
 <div id="side-panel" class="fixed top-0 left-0 h-full w-72 bg-white z-50 shadow-2xl -translate-x-full flex flex-col">
-  <div class="bg-gray-900 text-white px-4 pt-safe pb-4 flex-shrink-0">
+  <div class="bg-gray-900 text-white px-4 pt-safe pb-3 flex-shrink-0">
     <div class="flex justify-between items-center mt-3">
       <p class="font-bold text-lg">Projects</p>
       <button id="close-panel-btn" class="text-gray-400 text-2xl leading-none p-2">✕</button>
+    </div>
+    <div class="mt-2 flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="panel-search-input" type="text" placeholder="Search projects..."
+        class="flex-1 bg-transparent border-0 outline-none text-sm text-white placeholder-gray-500" />
     </div>
   </div>
   <div class="flex-1 overflow-y-auto" id="panel-list"></div>
@@ -400,6 +413,7 @@ const state = {
   notes: {},
   expandedGroups: [],
   searchQuery: '',
+  panelSearchQuery: '',
   rooms: {},
   deal: { arv: '', purchasePrice: '', closingCosts: '', holdingCosts: '' },
 };
@@ -670,7 +684,9 @@ function closePanel() {
 }
 
 function refreshPanelList() {
-  const list = loadProjects();
+  const q = state.panelSearchQuery.toLowerCase().trim();
+  const list = loadProjects().filter(p => !q || p.name.toLowerCase().includes(q) || fmtDate(p.savedAt).toLowerCase().includes(q));
+  { const inp = document.getElementById('panel-search-input'); if (inp) inp.value = state.panelSearchQuery; }
   const panelList = document.getElementById('panel-list');
   panelList.innerHTML = list.length === 0
     ? '<p class="text-center text-gray-400 text-sm py-10">No saved projects</p>'
@@ -748,7 +764,7 @@ function renderHeader() {
   return `
     <div class="bg-gray-900 text-white shadow-lg flex-shrink-0 pt-safe">
       <div class="px-4 py-1.5 flex justify-between items-center">
-        <div class="flex items-center gap-6">
+        <div class="flex items-center gap-1">
           <button data-action="open-panel" class="p-2 text-gray-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
@@ -800,6 +816,11 @@ function renderCategoryTabs() {
         ${count > 0 ? `<span class="ml-1 text-xs ${active ? 'text-orange-500' : 'text-gray-400'}">${total > 0 ? fmtTotal(total) : count + ' ✓'}</span>` : ''}
       </button>`;
     }).join('')}
+    <button data-action="show-summary"
+      class="flex-none px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${state.showSummary ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-gray-500'}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="inline-block -mt-0.5 mr-1"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      Summary
+    </button>
   </div>`;
 }
 
@@ -1225,15 +1246,18 @@ function renderSummary() {
 
   return `<div class="min-h-screen bg-slate-100">
     <div class="bg-gray-900 text-white pt-safe">
-      <div class="px-4 pt-2 pb-1 flex justify-between items-center">
-        <button data-action="back-to-edit" class="text-orange-400 text-sm flex items-center gap-1">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>Back
-        </button>
-        <p class="text-xs text-orange-400 font-semibold tracking-wide flex items-center gap-1.5">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAGCAYAAAGnR87/AAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAeGVYSWZNTQAqAAAACAAEARoABQAAAAEAAAA+ARsABQAAAAEAAABGASgAAwAAAAEAAgAAh2kABAAAAAEAAABOAAAAAAAAAEgAAAABAAAASAAAAAEAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAHKADAAQAAAABAAAABgAAAAB9Yk+2AAAACXBIWXMAAAsTAAALEwEAmpwYAAACmGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNi4wLjAiPgogICA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgICAgICAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYvMS4wLyIKICAgICAgICAgICAgeG1sbnM6ZXhpZj0iaHR0cDovL25zLmFkb2JlLmNvbS9leGlmLzEuMC8iPgogICAgICAgICA8dGlmZjpYUmVzb2x1dGlvbj43MjwvdGlmZjpYUmVzb2x1dGlvbj4KICAgICAgICAgPHRpZmY6WVJlc29sdXRpb24+NzI8L3RpZmY6WVJlc29sdXRpb24+CiAgICAgICAgIDx0aWZmOlJlc29sdXRpb25Vbml0PjI8L3RpZmY6UmVzb2x1dGlvblVuaXQ+CiAgICAgICAgIDxleGlmOlBpeGVsWURpbWVuc2lvbj4xNTwvZXhpZjpQaXhlbFlEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOlBpeGVsWERpbWVuc2lvbj42NDwvZXhpZjpQaXhlbFhEaW1lbnNpb24+CiAgICAgICAgIDxleGlmOkNvbG9yU3BhY2U+MTwvZXhpZjpDb2xvclNwYWNlPgogICAgICA8L3JkZjpEZXNjcmlwdGlvbj4KPC9yZGY6UkRGPgo8L3g6eG1wbWV0YT4KOW6VWAAAAVBJREFUKBWt0U1LQkEUBuB3xtG0L0OLiApyWUKLFq3bhKsgEKldq4j+UOuWQlCr1v2AFkIfBoYrrQhLirISdW7ve8uNu6CBh7lz7jmeM1dgcJ2twfVjplpAstXF0vIJbhmMUPtXFDd55PuZg7vzARYYHKIRsqRKo92U89hnQsfAzmWPfZHBdXqhDgX0Tvc0TVVSfBHXBaTKG1jh4U/LmS52TdTGn7d9I13EHqvVReMk6YFOaZJeaZQ0gXXMOg+MX031wnEOGGyS7qVi/UiPKqQ76llfqWVKm5hwFrkgQMYZ3PG+F1mHK3OEKBNS9EkJUkftXzROYWfuWl3y4dNPA51jpO8h+q907rmYxVbE2Hlv0Ag8Msb62WYknDbOhB3S5DJMGkCN01SnKbqkGmkY0Q011BPN0BupVreu6yVqBSQ+PHJtj8exJEqZw7BAr/59fQOn6WPzHmHjDgAAAABJRU5ErkJggg==" class="h-4 w-auto inline-block brightness-0 invert" alt="" />
-          <span>SPARK ESTIMATOR</span>
-        </p>
-        <div class="flex items-center gap-1">
+      <div class="px-4 pt-2 pb-4 flex justify-between items-center">
+        <div class="flex items-center gap-2 min-w-0">
+          <button data-action="back-to-edit" class="text-orange-400 text-sm flex items-center gap-1 flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>Back
+          </button>
+          <img src="logo.png" class="h-7 w-auto flex-shrink-0" alt="Spark Group" />
+          <p class="text-xs text-orange-400 font-semibold tracking-wide flex-shrink-0">SPARK ESTIMATOR</p>
+        </div>
+        <p class="text-lg font-bold text-white truncate mx-2">${state.currentProjectName}</p>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <p class="text-xs text-gray-400 font-medium">Total Estimate</p>
+          <p class="text-2xl font-bold tabular-nums text-white">${fmtTotal(total)}</p>
           <button data-action="share-project" class="p-2 text-gray-400" title="Share">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
           </button>
@@ -1243,12 +1267,10 @@ function renderSummary() {
               <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
             </svg>
           </button>
+          <button data-action="export-pdf" class="p-2 text-gray-400" title="Download PDF">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><polyline points="9 15 12 18 15 15"/></svg>
+          </button>
         </div>
-      </div>
-      <div class="px-4 pt-1 pb-6">
-        <p class="text-xs font-semibold tracking-widest uppercase text-orange-400">Total Estimate</p>
-        <p class="text-5xl font-bold mt-1 tabular-nums">${fmtTotal(total)}</p>
-        <p class="text-xs text-gray-400 mt-1.5">${state.currentProjectName}</p>
       </div>
     </div>
     <div class="px-4 py-4 space-y-3">
@@ -1532,6 +1554,7 @@ document.body.addEventListener('click', e => {
   if (action === 'open-panel')       { openPanel(); return; }
   if (action === 'open-settings')    { openSettings(); return; }
   if (action === 'export-excel')     { exportPackage(); return; }
+  if (action === 'export-pdf')       { window.print(); return; }
   if (action === 'search-clear') {
     state.searchQuery = '';
     const container = document.getElementById('scroll-area');
@@ -1835,6 +1858,12 @@ document.body.addEventListener('click', e => {
 });
 
 document.body.addEventListener('input', e => {
+  const panelSearchEl = e.target.closest('#panel-search-input');
+  if (panelSearchEl) {
+    state.panelSearchQuery = panelSearchEl.value;
+    refreshPanelList();
+    return;
+  }
   const searchEl = e.target.closest('[data-action="search-input"]');
   if (searchEl) {
     state.searchQuery = searchEl.value;
