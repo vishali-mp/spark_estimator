@@ -1,17 +1,22 @@
 # Spark Repair Estimator
 
-A field-ready, single-file PWA for home repair estimating. Designed for property inspectors and real estate agents to quickly estimate repair costs during walkthroughs, capture photos of equipment serial numbers, run AI-based damage detection, and generate professional Excel reports — all offline.
+A field-ready, single-file PWA for home repair estimating — built for the Spark Homes acquisition team. Used on-site during property walkthroughs to estimate repair costs, capture photos, and generate professional reports, all offline.
 
-## Quick Start
+## Quick Reference
 
-Open `index.html` in any browser. No server, build, or install needed.
+**Approach:** Vanilla JS single-page application — no build tools, no frameworks, no backend. All logic lives in one HTML file (~2150 lines). State is managed in a global object and persisted to localStorage. The UI uses full `innerHTML` re-renders on navigation events with targeted partial DOM updates (search filtering, total recalculation) to preserve input focus. Room instances (bathrooms, bedrooms) are fully dynamic — agents add/remove rooms per property.
 
+**Libraries used (CDN, runtime):**
+- Tailwind CSS — utility-first styling
+- `xlsx-js-style` — styled Excel export
+- `JSZip` — photo ZIP bundling
+- `@tensorflow/tfjs` + `@tensorflow-models/coco-ssd` — client-side AI damage detection
+
+**How to run locally:**
 ```
 open index.html
 ```
-
-For PWA features (installable, offline caching), serve via HTTP:
-
+No server, build, or install required. For PWA features (installable, offline caching):
 ```
 python3 -m http.server 8080
 ```
@@ -105,7 +110,7 @@ Three-tier priority: **project override** → **global CSV override** → **defa
 
 ### Photo Capture
 
-- **Camera / file picker** — opens device camera via `<input capture="environment">` for items with `hasYear: true` (furnace, condensing unit, HWH, roof)
+- **Camera / file picker** — opens device camera via `<input capture="environment">` on any checked line item
 - **Compression** — images compressed to 1600px max dimension at 82% JPEG quality via canvas
 - **Barcode/QR detection** — `BarcodeDetector` API (Chromium) auto-extracts serial numbers from barcodes/QR codes on capture
 - **Manual serial entry** — text field per photo for serial number input
