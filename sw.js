@@ -1,7 +1,7 @@
 const CACHE = 'spark-estimator-v1';
 const URLS = [
   '/',
-  '/App.html',
+  '/index.html',
   '/manifest.json',
   '/logo.png',
   '/icon-180.png',

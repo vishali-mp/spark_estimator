@@ -2,12 +2,12 @@
 
 ## Overview
 
-Single-file vanilla JS SPA (`App.html`) — no build tools, no package manager, no tests. Fully client-side PWA, served by opening in a browser or any static file server.
+Single-file vanilla JS SPA (`index.html`) — no build tools, no package manager, no tests. Fully client-side PWA, served by opening in a browser or any static file server.
 
 ## Project structure
 
 ```
-App.html             — entire app (HTML, CSS, JS in ~2087 lines)
+index.html             — entire app (HTML, CSS, JS in ~2087 lines)
 Pricing List.csv     — default line-item prices (source of truth for costs)
 manifest.json        — PWA manifest (installable on Android/iOS)
 sw.js                — service worker (caches app for offline use)
@@ -24,7 +24,7 @@ AGENTS.md            — developer reference
 
 ## How to run
 
-Open `App.html` in any browser. No server, build, or install needed. PWA features (service worker, manifest) work when served from an HTTP server.
+Open `index.html` in any browser. No server, build, or install needed. PWA features (service worker, manifest) work when served from an HTTP server.
 
 ## Architecture
 
@@ -45,7 +45,7 @@ Open `App.html` in any browser. No server, build, or install needed. PWA feature
 ## Pricing
 
 - Default prices defined in `Pricing List.csv` (columns: `id`, `name`, `cost`, `unit`)
-- Hardcoded in `App.html` as the `CATEGORIES` array
+- Hardcoded in `index.html` as the `CATEGORIES` array
 - **Global overrides**: Settings → Upload CSV (only `id` and `cost` columns matter), stored in `state.priceOverrides` → localStorage key `sparkRepairPrices_v1`
 - **Per-project overrides**: tap the cost label on any line item to edit inline, stored in `state.projectPriceOverrides` → per-project in `sparkRepairProjects_v1`
 - Priority: `projectPriceOverrides` → `priceOverrides` → `item.cost`
@@ -116,7 +116,7 @@ To avoid full re-renders on frequent interactions:
 ## Modifying pricing
 
 1. Edit `Pricing List.csv` for the single source of truth
-2. Update the `CATEGORIES` array in `App.html` to match
+2. Update the `CATEGORIES` array in `index.html` to match
 3. CSV `id` values must match JS `CATEGORIES` item `id` values exactly
 4. For new categories, add items to the array and GROUPS entries
 

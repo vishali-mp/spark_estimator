@@ -4,10 +4,10 @@ A field-ready, single-file PWA for home repair estimating. Designed for property
 
 ## Quick Start
 
-Open `App.html` in any browser. No server, build, or install needed.
+Open `index.html` in any browser. No server, build, or install needed.
 
 ```
-open App.html
+open index.html
 ```
 
 For PWA features (installable, offline caching), serve via HTTP:
@@ -232,7 +232,7 @@ Photos stored as base64 data URLs (compressed to 1600px / 82% JPEG quality). If 
 ## Project Structure
 
 ```
-App.html             — Entire application (HTML + CSS + JS)
+index.html             — Entire application (HTML + CSS + JS)
 Pricing List.csv     — Default line-item prices (source of truth)
 manifest.json        — PWA manifest
 sw.js                — Service worker
@@ -248,7 +248,7 @@ AGENTS.md            — Developer reference
 ## Modifying Pricing
 
 1. Edit `Pricing List.csv` (source of truth)
-2. Update the `CATEGORIES` array in `App.html` to match
+2. Update the `CATEGORIES` array in `index.html` to match
 3. CSV `id` values must match JS item `id` values exactly
 4. For new categories, add items to the array and `GROUPS` entries
 

@@ -2,7 +2,7 @@
   "name": "Spark Repair Estimator",
   "short_name": "Estimator",
   "description": "Field-ready repair cost estimator for Spark Homes acquisition team",
-  "start_url": "App.html",
+  "start_url": "index.html",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f1f5f9",
