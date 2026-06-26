@@ -55,6 +55,9 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input id="panel-search-input" type="text" placeholder="Search projects..."
         class="flex-1 bg-transparent border-0 outline-none text-sm text-white placeholder-gray-500" />
+      <button id="panel-search-clear" class="text-gray-500 p-1 hidden">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   </div>
   <div class="flex-1 overflow-y-auto" id="panel-list"></div>
@@ -460,6 +463,7 @@ function initState() {
   state.projectPriceOverrides = {};
   state.expandedGroups = [];
   state.searchQuery = '';
+  state.panelSearchQuery = '';
   initRooms();
   CATEGORIES.forEach(cat => {
     if (cat.type === 'multi') {
@@ -486,6 +490,7 @@ function loadProjectIntoState(proj) {
   state.currentCat = 0;
   state.showSummary = false;
   state.searchQuery = '';
+  state.panelSearchQuery = '';
   state.expandedGroups = [];
   // Ensure all multi categories have valid room config
   CATEGORIES.forEach(cat => {
@@ -687,6 +692,7 @@ function refreshPanelList() {
   const q = state.panelSearchQuery.toLowerCase().trim();
   const list = loadProjects().filter(p => !q || p.name.toLowerCase().includes(q) || fmtDate(p.savedAt).toLowerCase().includes(q));
   { const inp = document.getElementById('panel-search-input'); if (inp) inp.value = state.panelSearchQuery; }
+  { const clear = document.getElementById('panel-search-clear'); if (clear) clear.classList.toggle('hidden', !state.panelSearchQuery); }
   const panelList = document.getElementById('panel-list');
   panelList.innerHTML = list.length === 0
     ? '<p class="text-center text-gray-400 text-sm py-10">No saved projects</p>'
@@ -1072,7 +1078,7 @@ function renderSearchBar() {
         <input id="global-search-input" data-action="search-input" type="text" value="${state.searchQuery.replace(/"/g,'&quot;')}"
           placeholder="Search all categories, items..."
           class="flex-1 bg-transparent border-0 outline-none text-sm py-0.5 placeholder-gray-400" />
-        <button data-action="search-clear" class="text-gray-400 p-1">
+        <button data-action="search-clear" class="text-gray-400 p-1 ${state.searchQuery ? '' : 'hidden'}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1563,6 +1569,8 @@ document.body.addEventListener('click', e => {
     if (container) container.innerHTML = renderSearchResults();
     const tabs = document.getElementById('category-tabs');
     if (tabs) tabs.style.display = '';
+    const clear = document.querySelector('[data-action="search-clear"]');
+    if (clear) clear.classList.add('hidden');
     return;
   }
   if (action === 'search-select') {
@@ -1861,6 +1869,8 @@ document.body.addEventListener('input', e => {
   const panelSearchEl = e.target.closest('#panel-search-input');
   if (panelSearchEl) {
     state.panelSearchQuery = panelSearchEl.value;
+    const clear = document.getElementById('panel-search-clear');
+    if (clear) clear.classList.toggle('hidden', !state.panelSearchQuery);
     refreshPanelList();
     return;
   }
@@ -1871,6 +1881,8 @@ document.body.addEventListener('input', e => {
     if (container) container.innerHTML = renderSearchResults();
     const tabs = document.getElementById('category-tabs');
     if (tabs) tabs.style.display = state.searchQuery.trim() ? 'none' : '';
+    const clear = document.querySelector('[data-action="search-clear"]');
+    if (clear) clear.classList.toggle('hidden', !state.searchQuery);
     return;
   }
   const qtyEl = e.target.closest('[data-action="update-qty"]');
@@ -1917,6 +1929,13 @@ document.body.addEventListener('input', e => {
 });
 
 document.getElementById('close-panel-btn').addEventListener('click', closePanel);
+document.getElementById('panel-search-clear').addEventListener('click', () => {
+  state.panelSearchQuery = '';
+  const input = document.getElementById('panel-search-input');
+  if (input) input.value = '';
+  document.getElementById('panel-search-clear').classList.add('hidden');
+  refreshPanelList();
+});
 document.getElementById('panel-overlay').addEventListener('click', closePanel);
 document.getElementById('new-project-btn').addEventListener('click', () => {
   closePanel();
