@@ -736,18 +736,18 @@ function renderHeader() {
   const pct = totalItems === 0 ? 0 : Math.round(checkedItems / totalItems * 100);
   return `
     <div class="bg-gray-900 text-white shadow-lg flex-shrink-0 pt-safe">
-      <div class="px-4 pt-2 pb-1 flex justify-between items-center">
-        <div class="flex items-center gap-2">
-          <button data-action="open-panel" class="p-2 -ml-1 text-gray-400">
+      <div class="px-4 py-1.5 flex justify-between items-center">
+        <div class="flex items-center gap-6">
+          <button data-action="open-panel" class="p-2 text-gray-400">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
-          <img src="logo.png" class="h-7 w-auto" alt="Spark Group" />
+          <div class="flex items-center gap-2">
+            <img src="logo.png" class="h-7 w-auto" alt="Spark Group" />
+            <p class="text-xs text-orange-400 font-semibold tracking-wide">SPARK ESTIMATOR</p>
+          </div>
         </div>
-        <p class="text-xs text-orange-400 font-semibold tracking-wide flex items-center gap-1.5">
-          <span>SPARK ESTIMATOR</span>
-        </p>
         <div class="flex items-center gap-2">
           <p class="text-lg font-bold tabular-nums text-white">${fmtTotal(total)}</p>
           <button data-action="open-settings" class="p-2 text-gray-400" title="Settings">${GEAR}</button>
@@ -762,7 +762,7 @@ function renderHeader() {
           </button>
         </div>
       </div>
-      <div class="px-4 pt-1 pb-4">
+      <div class="px-4 pt-1 pb-5">
         <div class="flex items-center gap-2 mt-1.5">
           <p class="text-xs text-gray-400 truncate flex-1">${state.currentProjectName} · ${activeSections} active section${activeSections !== 1 ? 's' : ''}</p>
           <button data-action="rename-project" class="flex-shrink-0 text-gray-500 p-2" title="Rename project">${PENCIL}</button>
