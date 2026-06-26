@@ -154,6 +154,7 @@ const CATEGORIES = [
       { id: 'ig-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ig-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ig-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ig-nan-5', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
     ]
   },
   {
@@ -203,6 +204,7 @@ const CATEGORIES = [
       { id: 'ba-nan-1', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ba-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ba-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ba-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
     ]
   },
   {
@@ -277,6 +279,7 @@ const CATEGORIES = [
       { id: 'as-nan-2', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'as-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'as-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'as-nan-5', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
     ]
   },
   {
@@ -310,6 +313,7 @@ const CATEGORIES = [
       { id: 'ex-nan-3', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ex-nan-4', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
       { id: 'ex-nan-5', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
+      { id: 'ex-nan-6', name: 'No Action Needed', cost: 0, unit: 'flat', noAction: true },
     ]
   },
 ];
@@ -342,6 +346,10 @@ const GROUPS = {
   'ex:windows':     { label: 'Windows',               ids: ['ex-nan-3','ex-13','ex-14','ex-15','ex-16','ex-17'] },
   'ex:garage':      { label: 'Garage',                ids: ['ex-nan-4','ex-21','ex-22','ex-23'] },
   'ex:trees':       { label: 'Trees',                 ids: ['ex-nan-5','ex-10','ex-11','ex-12'] },
+  'ig:finish':      { label: 'Finish Out & Cleanup',  ids: ['ig-nan-5','ig-19','ig-20','ig-21','ig-22','ig-25','ig-26','ig-27','ig-28'] },
+  'ba:other':       { label: 'Bathroom Fixtures',     ids: ['ba-nan-4','ba-04','ba-15','ba-16'] },
+  'as:plumbing':    { label: 'Plumbing & Roof',       ids: ['as-nan-5','as-08','as-09','as-16','as-17'] },
+  'ex:extras':      { label: 'Exterior Finishes',     ids: ['ex-nan-6','ex-04','ex-06','ex-07','ex-08','ex-18','ex-19','ex-20'] },
 };
 
 const MULTI_CATS = CATEGORIES.filter(c => c.type === 'multi');
@@ -830,13 +838,13 @@ function renderCategoryTabs() {
   </div>`;
 }
 
-function renderLineItem(item, stateId, grouped) {
+function renderLineItem(item, stateId, grouped, disabled) {
   const id = stateId || item.id;
   const s = state.items[id] || { checked: false, qty: '', year: '' };
   const isCustom = item.id.includes('-cus-');
   const outerCls = grouped
-    ? `bg-slate-50 rounded-xl overflow-hidden border border-gray-100 ${s.checked ? 'ring-1 ring-orange-200' : ''}`
-    : `bg-white rounded-2xl mb-2.5 shadow-sm overflow-hidden ${s.checked ? 'ring-1 ring-orange-200' : ''}`;
+    ? `bg-slate-50 rounded-xl overflow-hidden border border-gray-100 ${s.checked ? 'ring-1 ring-orange-200' : ''} ${disabled ? 'opacity-40 pointer-events-none' : ''}`
+    : `bg-white rounded-2xl mb-2.5 shadow-sm overflow-hidden ${s.checked ? 'ring-1 ring-orange-200' : ''} ${disabled ? 'opacity-40 pointer-events-none' : ''}`;
   if (item.noAction) return `
     <div data-item-card class="${outerCls}">
       <div class="px-4 py-3">
@@ -956,6 +964,9 @@ function renderGroup(slot) {
   const isExpanded = state.expandedGroups.includes(gid);
   const checkedInGroup = entries.filter(e => state.items[e.stateId]?.checked).length;
   const groupTotal = entries.reduce((sum, e) => sum + calcItem(e.item, state.items[e.stateId]), 0);
+  const nanId = GROUPS[gid].ids.find(i => i.includes('-nan-'));
+  const prefix = entries[0]?.stateId?.includes(':') ? entries[0].stateId.split(':')[0] + ':' : '';
+  const nanChecked = nanId ? state.items[prefix + nanId]?.checked : false;
   const chevron = isExpanded
     ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>`
     : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>`;
@@ -966,12 +977,12 @@ function renderGroup(slot) {
         <div class="flex items-center gap-2.5 min-w-0">
           <span class="text-gray-400 flex-shrink-0">${chevron}</span>
           <span class="font-semibold text-sm text-gray-800">${label}</span>
-          ${checkedInGroup > 0 ? `<span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium flex-shrink-0">${checkedInGroup} ✓</span>` : ''}
+          ${nanChecked ? `<span class="text-xs px-2 py-0.5 bg-gray-200 text-gray-500 rounded-full font-medium flex-shrink-0">No Action</span>` : checkedInGroup > 0 ? `<span class="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full font-medium flex-shrink-0">${checkedInGroup} ✓</span>` : ''}
         </div>
         <span data-group-total class="font-bold text-base flex-shrink-0 ml-2 ${groupTotal > 0 ? 'text-orange-600' : 'text-gray-200'}">${groupTotal > 0 ? fmtTotal(groupTotal) : '—'}</span>
       </button>
       ${isExpanded ? `<div class="border-t border-gray-100 px-3 pb-3 pt-2 space-y-2">
-        ${entries.map(e => renderLineItem(e.item, e.stateId, true)).join('')}
+        ${entries.map(e => renderLineItem(e.item, e.stateId, true, nanChecked && !e.item.id.includes('-nan-'))).join('')}
       </div>` : ''}
     </div>`;
 }
@@ -1598,8 +1609,39 @@ document.body.addEventListener('click', e => {
     const id = btn.dataset.id;
     const s = state.items[id];
     if (!s) return;
-    s.checked = !s.checked;
-    if (!s.checked) s.qty = '';
+    const itemId = id.includes(':') ? id.split(':')[1] : id;
+    const isNoAction = itemId.includes('-nan-');
+    const gid = findGroupForItem(itemId);
+    if (gid) {
+      const group = GROUPS[gid];
+      const nanId = group.ids.find(i => i.includes('-nan-'));
+      if (nanId) {
+        const prefix = id.includes(':') ? id.split(':')[0] + ':' : '';
+        const groupNanId = prefix + nanId;
+        const nanState = state.items[groupNanId];
+        if (isNoAction) {
+          s.checked = !s.checked;
+          if (s.checked) {
+            group.ids.forEach(i => {
+              if (i === nanId) return;
+              const otherId = prefix + i;
+              const other = state.items[otherId];
+              if (other) { other.checked = false; other.qty = ''; }
+            });
+          }
+        } else {
+          if (nanState?.checked) nanState.checked = false;
+          s.checked = !s.checked;
+          if (!s.checked) s.qty = '';
+        }
+      } else {
+        s.checked = !s.checked;
+        if (!s.checked) s.qty = '';
+      }
+    } else {
+      s.checked = !s.checked;
+      if (!s.checked) s.qty = '';
+    }
     saveCurrentState(); render();
     if (s.checked) document.querySelector(`[data-action="update-qty"][data-id="${id}"]`)?.focus();
     return;
